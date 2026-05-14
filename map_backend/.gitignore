@@ -3,6 +3,7 @@
 *.db
 .cursorrules
 gitignore.txt
+.claude/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -142,3 +143,6 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+map_wheels/
+

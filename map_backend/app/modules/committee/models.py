@@ -19,14 +19,14 @@ from app.core.orm_base import Base
 
 
 class MeetingType(str, enum.Enum):
-    FICC = "FICC"
-    MIXED = "MIXED"
+    FICC = "ficc"
+    MIXED = "mixed"
 
 
 class MeetingStatus(str, enum.Enum):
-    DRAFT = "DRAFT"        # 草稿，尚未开放投票
-    VOTING = "VOTING"      # 投票进行中
-    PUBLISHED = "PUBLISHED"  # 决议已发布，终态
+    DRAFT = "draft"          # 草稿，尚未开放投票
+    VOTING = "voting"        # 投票进行中
+    PUBLISHED = "published"  # 决议已发布，终态
 
 
 # ── ORM 模型 ──────────────────────────────────────────────────────────────────
@@ -40,9 +40,7 @@ class IcMeeting(Base):
 
     __tablename__ = "ic_meetings"
     __table_args__ = (
-        # meeting_code 全局唯一，业务层用于幂等创建
         Index("uq_ic_meetings_meeting_code", "meeting_code", unique=True),
-        # 高频查询：按状态+软删除过滤列表
         Index("ix_ic_meetings_status_deleted", "status", "is_deleted"),
         {"comment": "投委会会议主表"},
     )
@@ -60,14 +58,14 @@ class IcMeeting(Base):
     type: Mapped[MeetingType] = mapped_column(
         Enum(MeetingType),
         nullable=False,
-        comment="会议类型 FICC=固定收益 MIXED=混合",
+        comment="会议类型 ficc=固定收益 mixed=混合",
     )
     status: Mapped[MeetingStatus] = mapped_column(
         Enum(MeetingStatus),
         nullable=False,
         default=MeetingStatus.DRAFT,
-        server_default="DRAFT",
-        comment="会议状态 DRAFT→VOTING→PUBLISHED",
+        server_default="draft",
+        comment="会议状态 draft→voting→published",
     )
     scheduled_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
@@ -87,18 +85,26 @@ class IcVoteRecord(Base):
     投委会投票记录表。
     每位委员每场会议只能提交一份投票（meeting_id + user_id 联合唯一索引保障）。
 
-    vote_json 结构（FICC 标准格式）：
+    vote_json 结构（三段式）：
     {
-        "choice_items":  {"equity_view": "overweight", "bond_view": "neutral"},
-        "numeric_items": {"hs300_target": 4200.0, "cn10y_yield": 2.35}
+        "section_a":  {"红利": 4, "偏股混": 3, ...},
+        "section_b":  {"红利": true, ...},
+        "section_c":  ["利率债", "黄金"],
+        "core_view":  "权益偏乐观，固收短久期",
+        "risk_flag":  false
+    }
+
+    numeric_items 结构（FICC 专有数值）：
+    {
+        "ficc_position_pct": 65,
+        "ficc_duration_pct": 40,
+        "ficc_equity_pct": 12
     }
     """
 
     __tablename__ = "ic_vote_records"
     __table_args__ = (
-        # 每人每场会议唯一，保障幂等覆写
         Index("uq_ic_vote_records_meeting_user", "meeting_id", "user_id", unique=True),
-        # 单字段索引：支持按会议或按用户独立查询
         Index("ix_ic_vote_records_meeting_id", "meeting_id"),
         Index("ix_ic_vote_records_user_id", "user_id"),
         {"comment": "投委会投票记录，每人每场会议唯一"},
@@ -117,7 +123,25 @@ class IcVoteRecord(Base):
     vote_json: Mapped[dict] = mapped_column(
         JSON,
         nullable=False,
-        comment="投票内容 JSON：choice_items（众数项）+ numeric_items（均值项）",
+        comment="投票内容 JSON：section_a/b/c + core_view + risk_flag",
+    )
+    numeric_items: Mapped[dict | None] = mapped_column(
+        JSON,
+        nullable=True,
+        default=None,
+        comment="FICC 专有数值 JSON：ficc_position_pct / duration_pct / equity_pct",
+    )
+    committee_type: Mapped[str | None] = mapped_column(
+        String(10),
+        nullable=True,
+        default=None,
+        comment="投委会类型：mixed / ficc",
+    )
+    vote_dimension: Mapped[str | None] = mapped_column(
+        String(10),
+        nullable=True,
+        default="monthly",
+        comment="投票维度：monthly / quarterly",
     )
     submitted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
@@ -133,17 +157,17 @@ class IcResolution(Base):
 
     aggregated_taa 结构：
     {
-        "meeting_type": "FICC",
+        "meeting_type": "mixed",
         "total_voters": 8,
         "computed_at": "2026-04-19T10:00:00Z",
         "choice_results": {
-            "equity_view": {
+            "红利": {
                 "winner": "overweight",
                 "vote_counts": {"overweight": 5, "neutral": 2, "underweight": 1}
             }
         },
         "numeric_results": {
-            "hs300_target": {"mean": 4200.0, "std": 150.5, "min": 3900.0, "max": 4500.0, "count": 8}
+            "ficc_position_pct": {"mean": 65.0, "std": 5.0, ...}
         }
     }
     """
@@ -178,4 +202,63 @@ class IcResolution(Base):
         BigInteger,
         nullable=True,
         comment="发布操作人 user_id（逻辑关联，无物理外键）",
+    )
+
+
+class IcChairResolution(Base):
+    """
+    主任委员资配决议表。
+    存储主任委员在 Step 3（配置指引 Tab）确认的最终部门资配决议。
+    """
+
+    __tablename__ = "ic_chair_resolutions"
+    __table_args__ = (
+        Index("uq_ic_chair_resolutions_meeting_id", "meeting_id", unique=True),
+        {"comment": "主任委员资配决议，每场会议唯一"},
+    )
+
+    meeting_id: Mapped[int] = mapped_column(
+        BigInteger,
+        nullable=False,
+        comment="会议 ID（逻辑关联，无物理外键）",
+    )
+    resolution_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        nullable=True,
+        comment="关联的 ic_resolutions.id（逻辑关联）",
+    )
+    bond_grade: Mapped[str] = mapped_column(
+        String(10),
+        nullable=False,
+        comment="固收久期档位：高/中/低",
+    )
+    bond_duration: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        comment="固收久期区间，如 3-7年",
+    )
+    equity_grade: Mapped[int] = mapped_column(
+        BigInteger,
+        nullable=False,
+        comment="权益档位 1~5 整数",
+    )
+    equity_grade_label: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        comment="权益档位中文标签，如 中性偏乐观",
+    )
+    equity_mix: Mapped[dict | None] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="权益明细分配 JSON: {red_li, cheng_zhang, jia_zhi}",
+    )
+    alt_notes: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="另类资产备注",
+    )
+    products: Mapped[dict | None] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="三类产品指引 JSON 数组",
     )

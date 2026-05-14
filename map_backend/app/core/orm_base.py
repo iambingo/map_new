@@ -5,7 +5,7 @@ core/orm_base.py — ORM 声明基类（无引擎、无配置依赖）
 """
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, SmallInteger, func, inspect, text
+from sqlalchemy import BigInteger, DateTime, Integer, SmallInteger, func, inspect, text
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -20,7 +20,7 @@ class Base(AsyncAttrs, DeclarativeBase):
     __abstract__ = True
 
     id: Mapped[int] = mapped_column(
-        BigInteger,
+        BigInteger().with_variant(Integer, "sqlite"),
         primary_key=True,
         autoincrement=True,
         comment="主键 ID",

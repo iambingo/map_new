@@ -1,32 +1,51 @@
 """
 core/config.py — 全局配置中心
-使用 Pydantic Settings 从环境变量 / .env 文件中加载所有基础设施参数。
+从 config.json 文件中加载所有基础设施参数。
 ⚠️  禁止在此处编写任何业务逻辑。
 """
+import json
+import os
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, MySQLDsn, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import BaseModel, Field, field_validator
 
 
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore",
-    )
+def _resolve_config_path() -> Path:
+    """解析 config.json 路径：优先使用 CONFIG_PATH 环境变量，否则使用项目根目录。"""
+    env_path = os.environ.get("CONFIG_PATH")
+    if env_path:
+        return Path(env_path).resolve()
+    # config.py 位于 app/core/，项目根目录在其上两级
+    return Path(__file__).resolve().parents[2] / "config.json"
 
+
+def _load_config() -> dict:
+    config_path = _resolve_config_path()
+    if not config_path.exists():
+        raise FileNotFoundError(
+            f"config.json not found at {config_path}. "
+            f"Set CONFIG_PATH env var to override, or place config.json in the project root."
+        )
+    with open(config_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+class Settings(BaseModel):
     # ── 服务基础 ─────────────────────────────────────────────────────────────
     APP_ENV: Literal["development", "staging", "production"] = "development"
     APP_NAME: str = "MAP Backend"
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = Field(default=False)
 
-    def model_post_init(self, _context) -> None:
-        if self.APP_ENV == "production" and self.SECRET_KEY == "change-me-in-production":
+    @field_validator("SECRET_KEY")
+    @classmethod
+    def check_secret_key(cls, v: str, info) -> str:
+        app_env = info.data.get("APP_ENV", "development")
+        if app_env == "production" and v == "change-me-in-production":
             raise ValueError("SECRET_KEY must be set to a strong random value in production")
+        return v
 
     # ── 数据库 ────────────────────────────────────────────────────────────────
     # 默认连 TDSQL for MySQL 8（端口 5400）；本地无 TDSQL 时可设 MAP_USE_SQLITE=true
@@ -54,8 +73,6 @@ class Settings(BaseSettings):
     def DATABASE_URL(self) -> str:
         """异步驱动 URL，供 AsyncEngine 使用。"""
         if self.MAP_USE_SQLITE:
-            from pathlib import Path
-
             p = Path(self.MAP_SQLITE_PATH)
             abs_path = p.resolve() if not p.is_absolute() else p
             return f"sqlite+aiosqlite:///{abs_path.as_posix()}"
@@ -97,11 +114,18 @@ class Settings(BaseSettings):
     # ── SSO / 统一门户 ────────────────────────────────────────────────────────
     SSO_VALIDATE_URL: str = Field(
         default="http://pawm-pfp-service.gateway.dev.pab.com.cn/wmuc/loginServer/loginValidateToken",
-        description="门户 token 校验远程接口地址",
+        description="门户 token 校验远程接口地址（后端调用）",
+    )
+    SSO_LOGIN_URL: str = Field(
+        default="http://wm.dev.paic.com.cn/lckj/pawm-uc/account_login.html",
+        description=(
+            "门户登录页地址（浏览器跳转）。dev=wm.dev.paic / fat=wm.stg.paic / prd=wm.paic。"
+            "前端在用户未登录时把浏览器跳到 `${SSO_LOGIN_URL}?urI=<我方根 URL>`。"
+        ),
     )
     SSO_LOGIN_REDIRECT_URL: str = Field(
         default="http://localhost:5173",
-        description="SSO 认证成功后重定向到前端的 URL",
+        description="SSO 认证成功后浏览器最终落地的前端 URL",
     )
 
     # ── CORS ─────────────────────────────────────────────────────────────────
@@ -131,7 +155,7 @@ class Settings(BaseSettings):
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """单例工厂，FastAPI Depends 注入时使用。"""
-    return Settings()
+    return Settings(**_load_config())
 
 
 # 模块级快捷访问（非 DI 场景下导入使用）

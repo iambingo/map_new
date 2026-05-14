@@ -1,0 +1,56 @@
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Python bytecode / caches
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Virtualenvs / local installs
+venv
+.venv
+env
+
+# Offline wheel cache (built by pipeline via internal PyPI mirror)
+map_wheels
+
+# Local agent / IDE / OS noise
+.claude
+.idea
+.vscode
+*.swp
+.DS_Store
+Thumbs.db
+
+# Tests (optional: keep out of runtime image)
+tests
+test_data
+*.test.py
+
+# Local databases / data dumps
+*.db
+*.sqlite
+*.sqlite3
+local_*.db
+
+# Documentation (not needed at runtime)
+deploy_prod.md
+README.md
+docs
+
+# Build artifacts
+build
+dist
+*.egg-info
+
+# Local secrets / overrides — must never enter the image
+.env
+.env.*
+config.local.json
+secrets.env

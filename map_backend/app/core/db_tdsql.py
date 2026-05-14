@@ -56,7 +56,7 @@ def _ensure_engine_and_factory() -> async_sessionmaker[AsyncSession]:
                 "  .\\venv\\Scripts\\pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple\n"
                 "或执行 .\\install_deps.ps1\n"
                 "若 conda base 与 venv 同时激活，请优先使用 .\\run_dev.ps1 启动。\n"
-                "若本机未安装 MySQL，可在 .env 中设置 MAP_USE_SQLITE=true 使用本地 SQLite。"
+                "若本机未安装 MySQL，可在 config.json 中设置 MAP_USE_SQLITE=true 使用本地 SQLite。"
             ) from exc
 
         _engine = create_async_engine(

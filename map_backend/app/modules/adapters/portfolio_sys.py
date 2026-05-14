@@ -106,7 +106,7 @@ class PortfolioSystemAdapter(BaseAdapter):
     """
     对接真实组合系统的 HTTP 适配器。
     继承 BaseAdapter，自动获得超时保护与指数退避重试。
-    激活方式：在 .env 设置 PORTFOLIO_SYS_URL=http://your-system/api
+    激活方式：在 config.json 设置 PORTFOLIO_SYS_URL
     """
 
     service_name = "PortfolioSystem"

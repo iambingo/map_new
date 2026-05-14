@@ -69,6 +69,7 @@ async def update_draft_status(
     if reject_reason is not None:
         draft.reject_reason = reject_reason
     await db.flush()
+    await db.refresh(draft)
     return draft
 
 

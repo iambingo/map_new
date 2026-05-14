@@ -5,45 +5,11 @@ modules/committee/schemas.py — Pydantic V2 Request / Response 模型
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 from app.modules.committee.models import MeetingStatus, MeetingType
-
-
-# ── 投票内容载体（vote_json 的结构契约） ──────────────────────────────────────
-
-
-class FiccVotePayload(BaseModel):
-    """
-    FICC / MIXED 会议的标准投票内容。
-
-    - choice_items:  分类选择题，key=指标名，value=选项字符串
-                     计票时取 **众数 (Mode)**。
-                     例：{"equity_view": "overweight", "bond_view": "neutral"}
-
-    - numeric_items: 数值点位预测，key=指标名，value=预测数值
-                     计票时取 **均值 (Mean)**。
-                     例：{"hs300_target": 4200.0, "cn10y_yield": 2.35}
-    """
-
-    choice_items: dict[str, str] = Field(
-        default_factory=dict,
-        description="分类选择题，计票取众数",
-        examples=[{"equity_view": "overweight", "bond_view": "neutral"}],
-    )
-    numeric_items: dict[str, float] = Field(
-        default_factory=dict,
-        description="数值点位预测，计票取均值",
-        examples=[{"hs300_target": 4200.0, "cn10y_yield": 2.35}],
-    )
-
-    @model_validator(mode="after")
-    def _require_at_least_one_item(self) -> FiccVotePayload:
-        if not self.choice_items and not self.numeric_items:
-            raise ValueError("投票内容不能为空：choice_items 与 numeric_items 至少填写一项")
-        return self
 
 
 # ── Request Schemas ───────────────────────────────────────────────────────────
@@ -52,12 +18,58 @@ class FiccVotePayload(BaseModel):
 class CreateMeetingRequest(BaseModel):
     meeting_code: str = Field(..., min_length=1, max_length=64, description="会议编码（全局唯一）")
     title: str = Field(..., min_length=1, max_length=256, description="会议标题")
-    type: MeetingType = Field(..., description="会议类型 FICC / MIXED")
+    type: MeetingType = Field(..., description="会议类型 mixed / ficc")
     scheduled_at: datetime | None = Field(None, description="计划召开时间（可选）")
 
 
 class SubmitVoteRequest(BaseModel):
-    vote: FiccVotePayload = Field(..., description="投票内容，遵循 FICC 标准格式")
+    """
+    投票提交请求（对齐 API 文档 §3.6 扁平结构）。
+    两套投委会共用，通过 committee_type 区分。
+    """
+
+    committee_type: Literal["mixed", "ficc"] = Field(
+        ..., description="投委会类型"
+    )
+    vote_dimension: Literal["monthly", "quarterly"] = Field(
+        default="monthly", description="投票维度：mixed 固定传 monthly"
+    )
+
+    # ── 混合投委会资产评分（Section A）─────────────────────────────────────
+    section_a: dict[str, int] | None = Field(
+        None,
+        description="资产评分，key=资产名，value=1~5 整数档位",
+        examples=[{"红利": 4, "偏股混": 3, "恒生科技": 5}],
+    )
+
+    # ── 创新高预判（Section B）─────────────────────────────────────────────
+    section_b: dict[str, bool] | None = Field(
+        None,
+        description="创新高预判，key=资产名，value=boolean",
+    )
+
+    # ── 重点资产标记（Section C）───────────────────────────────────────────
+    section_c: list[str] | None = Field(
+        None,
+        description="重点关注的资产名称列表",
+        examples=[["利率债", "黄金"]],
+    )
+
+    # ── 委员综合市场观点 ────────────────────────────────────────────────────
+    core_view: str | None = Field(None, description="委员综合市场观点")
+
+    # ── 风险提示标记 ────────────────────────────────────────────────────────
+    risk_flag: bool | None = Field(None, description="风险提示标记")
+
+    # ── FICC 专有扩展字段 ───────────────────────────────────────────────────
+    ficc_position_pct: float | None = Field(None, description="稳定资产仓位比例 0~100")
+    ficc_duration_pct: float | None = Field(None, description="久期使用率 0~100")
+    ficc_equity_pct: float | None = Field(None, description="穿透含权率 0~100")
+
+    # ── 代填模式字段 ────────────────────────────────────────────────────────
+    target_member_id: int | None = Field(None, description="被代填委员 user_id")
+    is_proxy: bool | None = Field(None, description="是否代填提交")
+    proxy_submitter_role: str | None = Field(None, description="代填人角色")
 
 
 # ── Response Schemas ──────────────────────────────────────────────────────────
@@ -84,11 +96,14 @@ class VoteRecordResponse(BaseModel):
     meeting_id: int
     user_id: int
     vote_json: dict[str, Any]
+    numeric_items: dict[str, Any] | None = None
+    committee_type: str | None = None
+    vote_dimension: str | None = None
     submitted_at: datetime | None
     created_at: datetime
 
 
-# ── 聚合结果子结构（用于 ResolutionResponse 内的类型标注与文档生成） ───────────
+# ── 聚合结果子结构 ────────────────────────────────────────────────────────────
 
 
 class ChoiceAggregation(BaseModel):
@@ -113,7 +128,9 @@ class ResolutionResponse(BaseModel):
 
     id: int
     meeting_id: int
-    aggregated_taa: dict[str, Any] = Field(description="聚合决议 JSON，含 choice_results 与 numeric_results")
+    aggregated_taa: dict[str, Any] = Field(
+        description="聚合决议 JSON，含 choice_results 与 numeric_results"
+    )
     ai_minutes: str | None = Field(None, description="AI 生成会议纪要")
     published_at: datetime | None
     published_by: int | None
@@ -143,3 +160,98 @@ class CommitteePageContextResponse(BaseModel):
     meeting: MeetingResponse | None = None
     resolution: ResolutionResponse | None = None
     votes: list[CommitteeVoteRow] = Field(default_factory=list)
+
+
+# ── 主任委员资配决议 ─────────────────────────────────────────────────────────
+
+
+class EquityMix(BaseModel):
+    红利: float = Field(description="红利 %")
+    成长: float = Field(description="成长 %")
+    价值: float = Field(description="价值 %")
+
+
+class ProductGuidance(BaseModel):
+    product_id: str = Field(description="产品标识: low / mid / hybrid")
+    product_name: str = Field(description="产品名称")
+    bond_grade: str = Field(description="固收久期档位")
+    bond_pct: float = Field(description="固收仓位 %")
+    equity_pct: float = Field(description="权益总仓位 %")
+    equity_sub: dict[str, float] = Field(description="权益子项分配")
+    alt_pct: float = Field(description="另类 %")
+    liquidity_pct: float = Field(description="流动性 %")
+
+
+class ChairResolutionRequest(BaseModel):
+    """主任委员资配决议请求（对齐 API 文档 §3.8）。"""
+
+    bond_grade: Literal["高", "中", "低"] = Field(description="固收久期档位")
+    bond_duration: str = Field(description="固收久期区间，如 3-7年")
+    equity_grade: int = Field(..., ge=1, le=5, description="权益档位 1~5")
+    equity_grade_label: str = Field(description="权益档位中文标签")
+    equity_mix: EquityMix | None = Field(None, description="权益明细分配")
+    alt_notes: str | None = Field(None, description="另类资产备注")
+    products: list[ProductGuidance] | None = Field(None, description="三类产品指引")
+
+
+class ChairResolutionResponse(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: int
+    meeting_id: int
+    resolution_id: int | None = None
+    bond_grade: str
+    bond_duration: str
+    equity_grade: int
+    equity_grade_label: str
+    equity_mix: dict[str, Any] | None = None
+    alt_notes: str | None = None
+    products: dict[str, Any] | None = None
+    created_at: datetime
+
+
+# ── 混合投委会会话查询 ──────────────────────────────────────────────────────
+
+
+class MixedSessionSubmission(BaseModel):
+    """单个委员的问卷提交记录。"""
+
+    submitter_id: int
+    submitted_at: str | None
+    questionnaire_json: dict[str, Any]
+
+
+class MixedSessionsResponse(BaseModel):
+    """GET /mixed/sessions 响应。"""
+
+    submissions: list[MixedSessionSubmission]
+
+
+class SessionScoreStats(BaseModel):
+    """单个资产的历史评分统计。"""
+
+    avg: float
+    max: float
+    min: float
+    count: int
+
+
+class HistoricalSession(BaseModel):
+    """单场历史会期的评分汇总。"""
+
+    session_code: str
+    submitted_count: int
+    scores: dict[str, SessionScoreStats]
+
+
+class MixedSessionsHistoryResponse(BaseModel):
+    """GET /mixed/sessions/history 响应。"""
+
+    sessions: list[HistoricalSession]
+
+
+class RemindRequest(BaseModel):
+    """POST /mixed/remind 请求。"""
+
+    member_name: str
+    member_id: int | None = None

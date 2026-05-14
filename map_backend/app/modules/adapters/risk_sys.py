@@ -47,7 +47,7 @@ class MockRiskAdapter:
 class RiskSystemAdapter(BaseAdapter):
     """
     对接真实风控系统的 HTTP 适配器。
-    激活方式：在 .env 设置 RISK_SYS_URL=http://your-risk-system/api
+    激活方式：在 config.json 设置 RISK_SYS_URL
     """
 
     service_name = "RiskSystem"

@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 
 from app.core.config import settings
 from app.core.exceptions import (
@@ -89,10 +90,21 @@ app.include_router(orchestrator_router, prefix="/api/v1/orchestrator", tags=["Or
 app.include_router(asset_allocation_router, prefix="/api/v1/asset-allocation", tags=["AssetAllocation"])
 app.include_router(message_center_router, prefix="/api/v1/messages", tags=["MessageCenter"])
 
-# SSO 回调端点挂在根路径（门户回调 URL）
-app.include_router(sso_router, prefix="", tags=["SSO"])
+# 根路径路由 + 门户 SSO 回调（门户回调 URL = 我方根 URL + ?ssoTokenId=xxx）
+app.include_router(sso_router, prefix="")
 # 认证相关 API 端点
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
+
+
+# 避免浏览器请求 /favicon.ico 时产生 404 噪声（与页面内容无关）
+_FAVICON_BYTES = bytes.fromhex(
+    "47494638396101000100800000ffffff21f90401000001002c000000000100010000020144003b"
+)
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon() -> Response:
+    return Response(content=_FAVICON_BYTES, media_type="image/gif")
 
 
 @app.get("/health", tags=["Health"])

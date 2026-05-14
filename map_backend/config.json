@@ -1,0 +1,36 @@
+{
+  "APP_ENV": "development",
+  "DEBUG": true,
+  "MAP_USE_SQLITE": false,
+  "MAP_SQLITE_PATH": "./map_local.sqlite",
+  "SECRET_KEY": "dev-secret-key-change-in-production",
+  "ACCESS_TOKEN_EXPIRE_MINUTES": 480,
+
+  "DB_HOST": "127.0.0.1",
+  "DB_PORT": 5400,
+  "DB_USER": "mapuser",
+  "DB_PASSWORD": "mappass",
+  "DB_NAME": "mapdb",
+  "DB_CHARSET": "utf8mb4",
+
+  "REDIS_HOST": "127.0.0.1",
+  "REDIS_PORT": 6379,
+  "REDIS_PASSWORD": "",
+  "REDIS_DB": 0,
+
+  "ROCKETMQ_NAME_SERVER": "127.0.0.1:9876",
+  "ROCKETMQ_PRODUCER_GROUP": "MAP_PRODUCER_GROUP",
+  "ROCKETMQ_CONSUMER_GROUP": "MAP_CONSUMER_GROUP",
+  "ROCKETMQ_TOPIC": "MAP_EVENTS",
+
+  "SSO_VALIDATE_URL": "http://pawm-pfp-service.gateway.dev.pab.com.cn/wmuc/loginServer/loginValidateToken",
+  "SSO_LOGIN_REDIRECT_URL": "http://localhost:5173",
+
+  "CORS_ORIGINS": "*",
+
+  "PORTFOLIO_SYS_URL": "",
+  "RISK_SYS_URL": "",
+
+  "EXTERNAL_HTTP_TIMEOUT": 10.0,
+  "EXTERNAL_HTTP_RETRIES": 3
+}
