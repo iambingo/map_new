@@ -64,7 +64,7 @@ class IcMeeting(Base):
         Enum(MeetingStatus),
         nullable=False,
         default=MeetingStatus.DRAFT,
-        server_default="draft",
+        server_default="DRAFT",
         comment="会议状态 draft→voting→published",
     )
     scheduled_at: Mapped[datetime | None] = mapped_column(

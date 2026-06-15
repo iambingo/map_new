@@ -7,7 +7,7 @@ modules/message_center/webhooks.py — 接收外部推送的原始信号
   - 所有 payload 字段均为可选，保持最大兼容性
 """
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field
 
@@ -29,7 +29,7 @@ def normalize_signal(raw: RawSignal) -> dict:
         "source": raw.source,
         "event_type": raw.event_type,
         "payload": raw.payload,
-        "occurred_at": raw.occurred_at or datetime.now(UTC).isoformat(),
+        "occurred_at": raw.occurred_at or datetime.now(timezone.utc).isoformat(),
         "idempotency_key": raw.idempotency_key,
-        "received_at": datetime.now(UTC).isoformat(),
+        "received_at": datetime.now(timezone.utc).isoformat(),
     }

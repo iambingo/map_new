@@ -35,12 +35,12 @@
         <div class="w-1/3 border-r border-[#2E3348] flex flex-col bg-[#161922]">
           <div class="p-3 border-b border-[#2E3348] bg-[#1A1E2B] flex justify-between items-center shrink-0">
             <h3 class="am-title-l2"><div class="am-title-bar"></div>用户组 (Group)</h3>
-            <button class="text-[#B4BAC9] hover:text-blue-400 transition-colors"><Plus class="w-4 h-4" /></button>
+            <button disabled class="text-[#B4BAC9] hover:text-blue-400 transition-colors opacity-40 cursor-not-allowed" title="即将推出"><Plus class="w-4 h-4" /></button>
           </div>
           <div class="p-2">
             <div class="relative mb-2">
               <Search class="w-3.5 h-3.5 absolute left-2.5 top-2 text-[#94A3B8]" />
-              <input type="text" placeholder="搜索用户组..." class="w-full operable-zone rounded pl-8 pr-2 py-1.5 text-[13px] text-[#E8ECF4] focus:outline-none" />
+              <input type="text" disabled placeholder="搜索用户组 (即将推出)..." class="w-full operable-zone rounded pl-8 pr-2 py-1.5 text-[13px] text-[#E8ECF4] focus:outline-none" />
             </div>
           </div>
           <div class="flex-1 overflow-y-auto p-2 space-y-1">
@@ -110,7 +110,7 @@
             </div>
           </div>
           <div class="p-4 border-t border-[#2E3348] bg-[#1A1E2B] shrink-0">
-            <button class="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white text-[13px] font-bold rounded flex items-center justify-center transition-colors shadow-[0_0_10px_rgba(37,99,235,0.2)]">
+            <button disabled class="w-full py-2 bg-blue-600 text-white text-[13px] font-bold rounded flex items-center justify-center transition-colors opacity-40 cursor-not-allowed" title="即将推出">
               <DocumentAdd class="w-3.5 h-3.5 mr-2" /> 保存权限配置
             </button>
           </div>
@@ -137,7 +137,7 @@
           <div v-if="activeMdmTab === 'upstream'" class="space-y-4">
             <div class="flex justify-between items-center">
               <h3 class="am-title-l2"><div class="am-title-bar"></div>外部系统接入看板 (Read-only)</h3>
-              <button class="flex items-center text-[13px] text-[#B4BAC9] hover:text-white bg-[#1A1E2B] border border-[#3E4660] px-3 py-1.5 rounded transition-colors">
+              <button disabled class="flex items-center text-[13px] text-[#B4BAC9] hover:text-white bg-[#1A1E2B] border border-[#3E4660] px-3 py-1.5 rounded transition-colors opacity-40 cursor-not-allowed" title="即将推出">
                 <RefreshRight class="w-3 h-3 mr-1.5" /> 手动全量同步
               </button>
             </div>
@@ -200,7 +200,7 @@
                 <h3 class="am-title-l2"><div class="am-title-bar"></div>IFTTT 触发器配置</h3>
                 <p class="text-[13px] text-[#B4BAC9] mt-1">配置自动化规则以驱动 MAP 门户的 7 个投资流程图节点流转。</p>
               </div>
-              <button class="flex items-center bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-[13px] font-medium transition-colors">
+              <button disabled class="flex items-center bg-blue-600 text-white px-3 py-1.5 rounded text-[13px] font-medium transition-colors opacity-40 cursor-not-allowed" title="即将推出">
                 <Plus class="w-3.5 h-3.5 mr-1" /> 新建规则
               </button>
             </div>
@@ -211,7 +211,7 @@
                     <Lightning :class="cn('w-4 h-4 mr-2', rule.active ? 'text-yellow-500' : 'text-[#94A3B8]')" />
                     <span class="text-[13px] font-bold text-[#E8ECF4]">{{ rule.name }}</span>
                   </div>
-                  <div :class="cn('w-10 h-5 rounded-full flex items-center p-0.5 cursor-pointer transition-colors', rule.active ? 'bg-blue-600' : 'bg-[#3E4660]')">
+                  <div :class="cn('w-10 h-5 rounded-full flex items-center p-0.5 cursor-not-allowed opacity-40 transition-colors', rule.active ? 'bg-blue-600' : 'bg-[#3E4660]')" title="即将推出">
                     <div :class="cn('w-4 h-4 rounded-full bg-white transition-transform', rule.active ? 'translate-x-5' : 'translate-x-0')" />
                   </div>
                 </div>
@@ -246,14 +246,14 @@
               </div>
               <div>
                 <label class="block text-[13px] text-[#B4BAC9] mb-1.5">指派给 (投资经理/研究员)</label>
-                <input type="text" placeholder="输入姓名或工号搜索..." class="w-full operable-zone text-[#E8ECF4] text-[13px] rounded px-3 py-2 focus:outline-none" />
+                <input type="text" disabled placeholder="输入姓名或工号搜索 (即将推出)..." class="w-full operable-zone text-[#E8ECF4] text-[13px] rounded px-3 py-2 focus:outline-none" />
               </div>
               <div>
                 <label class="block text-[13px] text-[#B4BAC9] mb-1.5">任务描述</label>
-                <textarea rows="3" placeholder="描述需要执行的具体操作..." class="w-full operable-zone text-[#E8ECF4] text-[13px] rounded px-3 py-2 focus:outline-none resize-none" />
+                <textarea rows="3" disabled placeholder="描述需要执行的具体操作 (即将推出)..." class="w-full operable-zone text-[#E8ECF4] text-[13px] rounded px-3 py-2 focus:outline-none resize-none" />
               </div>
               <div class="pt-4 border-t border-[#2E3348] flex justify-end">
-                <button class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white text-[13px] font-bold rounded transition-colors shadow-[0_0_10px_rgba(37,99,235,0.2)]">立即派发</button>
+                <button disabled class="px-6 py-2 bg-blue-600 text-white text-[13px] font-bold rounded transition-colors opacity-40 cursor-not-allowed" title="即将推出">立即派发</button>
               </div>
             </div>
           </div>

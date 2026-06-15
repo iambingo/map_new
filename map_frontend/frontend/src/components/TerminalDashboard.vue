@@ -456,6 +456,19 @@
               <span class="text-[11px] font-mono text-[#94A3B8] bg-[#161922] border border-[#252A3A] px-2 py-1 rounded">
                 投委会决议 · 2026-03-20 · 第十二期
               </span>
+              <button
+                @click="navigateToModelCenter"
+                :disabled="isRunningModel"
+                class="flex items-center gap-1.5 text-[11px] font-mono px-2.5 py-1 rounded border transition-all duration-150"
+                :class="isRunningModel
+                  ? 'border-[#2E3348] text-[#4A5568] bg-[#161922] cursor-wait'
+                  : 'border-[#3B9EFF]/30 text-[#3B9EFF] bg-[#3B9EFF]/5 hover:bg-[#3B9EFF]/12 hover:border-[#3B9EFF]/55'"
+                title="跳转模型中心，运行资配优化模型后自动回填目标权重"
+              >
+                <span v-if="isRunningModel" class="w-3 h-3 border border-[#3B9EFF]/30 border-t-[#3B9EFF] rounded-full animate-spin shrink-0"></span>
+                <span v-else class="text-[11px] shrink-0">📊</span>
+                <span>运行资配模型优化</span>
+              </button>
               <button @click="toggleFullscreen('deviation-chart')" class="text-[#94A3B8] hover:text-[#E5E5E5] p-1.5 rounded hover:bg-[#2A2D3A] transition-colors" title="全屏查看">
                 <ScaleToOriginal v-if="isFullscreen('deviation-chart')" class="w-[13px] h-[13px]" />
                 <FullScreen v-else class="w-[13px] h-[13px]" />
@@ -753,7 +766,19 @@
                   <span class="text-xs font-mono text-[#94A3B8]">{{ intentAssets.length }} 只标的 · 权重合计 {{ totalIntentWeight.toFixed(1) }}%</span>
                 </div>
                 <div class="flex-1 overflow-auto no-scrollbar">
-                  <table class="w-full text-left border-collapse table-fixed">
+                  <!-- Holdings skeleton -->
+                  <div v-if="holdingsLoading" class="p-3 space-y-2">
+                    <div v-for="i in 5" :key="i" class="flex items-center gap-3">
+                      <div class="am-skeleton h-3 flex-1"></div>
+                      <div class="am-skeleton h-3 w-16"></div>
+                      <div class="am-skeleton h-3 w-14"></div>
+                      <div class="am-skeleton h-3 w-12"></div>
+                      <div class="am-skeleton h-3 w-16"></div>
+                      <div class="am-skeleton h-3 w-12"></div>
+                      <div class="am-skeleton h-3 w-14"></div>
+                    </div>
+                  </div>
+                  <table v-else class="w-full text-left border-collapse table-fixed">
                     <thead class="sticky top-0 bg-[#1A1E2B] z-10 border-b border-[#2E3348]">
                       <tr class="text-xs text-[#94A3B8] uppercase tracking-widest font-mono">
                         <th class="px-3 py-2 font-medium" style="width:220px">名称</th>
@@ -1444,6 +1469,9 @@ function exitFullscreen() {
 }
 const hasMaximized = computed(() => maximizedComponent.value !== null);
 
+const holdingsLoading = ref(true);
+onMounted(() => { setTimeout(() => holdingsLoading.value = false, 800); });
+
 const showGlobalBasket = ref(false);
 const globalBasketSimulation = ref(false);
 
@@ -2046,14 +2074,30 @@ const CONSENSUS_FEED = [
 
 // ── Model weight receiver ─────────────────────────────────────────────────────
 function applyModelWeights(payload: PendingModelWeights) {
-  intentAssets.forEach(asset => {
-    if (payload.weights[asset.code] !== undefined) {
-      asset.weight = payload.weights[asset.code];
+  if (payload.targetTab === 'taa') {
+    // TAA mode: apply macro-category weights to productTaa sliders
+    let applied = 0;
+    Object.entries(payload.weights).forEach(([category, weight]) => {
+      if (productTaa[category] !== undefined) {
+        productTaa[category].val = weight;
+        applied++;
+      }
+    });
+    if (applied > 0) {
+      activeTab.value = 'taa';
+      showToast(`已成功导入 ${payload.modelName} 优化配置方案，目标持仓比例已自动更新`, 'success');
     }
-  });
-  appliedModelName.value = payload.modelName;
-  showModelAppliedBanner.value = true;
-  setTimeout(() => { showModelAppliedBanner.value = false; }, 6500);
+  } else {
+    // Intent mode: apply security-level weights
+    intentAssets.forEach(asset => {
+      if (payload.weights[asset.code] !== undefined) {
+        asset.weight = payload.weights[asset.code];
+      }
+    });
+    appliedModelName.value = payload.modelName;
+    showModelAppliedBanner.value = true;
+    setTimeout(() => { showModelAppliedBanner.value = false; }, 6500);
+  }
   sharedIntentState.pendingModelWeights = null;
 }
 

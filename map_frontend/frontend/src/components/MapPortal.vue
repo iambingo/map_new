@@ -120,7 +120,7 @@
           <!-- Footer timestamp -->
           <div class="px-2.5 py-1.5 border-t border-[#252A3A] bg-[#161922] flex items-center justify-between">
             <span class="text-[10px] font-mono text-[#64748B] uppercase tracking-widest">数据截止 09:25</span>
-            <span class="text-[10px] font-mono text-[#64748B]">自动刷新</span>
+            <button disabled class="text-[10px] font-mono text-[#64748B] opacity-40 cursor-not-allowed" title="即将推出">自动刷新</button>
           </div>
         </div>
       </div>
@@ -405,8 +405,15 @@
           </div>
 
           <template v-if="selectedPortfolios.length > 0">
+            <!-- KPI Metrics (compact) — skeleton -->
+            <div v-if="dashboardLoading" class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2 shrink-0">
+              <div v-for="i in 4" :key="i" class="bg-gradient-to-br from-[#1A1E2B] to-[#1A1E2B] border border-[#2E3348] p-2 rounded-lg">
+                <div class="am-skeleton h-2.5 w-16 mb-1.5"></div>
+                <div class="am-skeleton h-4 w-14"></div>
+              </div>
+            </div>
             <!-- KPI Metrics (compact) -->
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2 shrink-0">
+            <div v-else class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2 shrink-0">
               <div class="bg-gradient-to-br from-[#1A1E2B] to-[#1A1E2B] border border-[#2E3348] p-2 rounded-lg hover:border-[#3E4660] transition-colors">
                 <div class="text-[10px] text-[#94A3B8] mb-0.5 uppercase tracking-wider">收益率 YTD</div>
                 <div class="text-[15px] font-bold text-[#FF3B30] font-mono">+4.52%</div>
@@ -425,8 +432,19 @@
               </div>
             </div>
 
+            <!-- Charts Row (flex-1 to eat remaining space) — skeleton -->
+            <div v-if="dashboardLoading" class="grid grid-cols-1 lg:grid-cols-3 gap-2 flex-1 min-h-0">
+              <div class="bg-gradient-to-br from-[#202431] to-[#1A1E2B] border border-[#2E3348] p-2 rounded-lg flex flex-col min-h-0">
+                <div class="am-skeleton h-3 w-32 mb-2"></div>
+                <div class="flex-1 am-skeleton"></div>
+              </div>
+              <div class="col-span-2 bg-gradient-to-br from-[#202431] to-[#1A1E2B] border border-[#2E3348] p-2 rounded-lg flex flex-col min-h-0">
+                <div class="am-skeleton h-3 w-28 mb-2"></div>
+                <div class="flex-1 am-skeleton"></div>
+              </div>
+            </div>
             <!-- Charts Row (flex-1 to eat remaining space) -->
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-2 flex-1 min-h-0">
+            <div v-else class="grid grid-cols-1 lg:grid-cols-3 gap-2 flex-1 min-h-0">
               <div class="bg-gradient-to-br from-[#202431] to-[#1A1E2B] border border-[#2E3348] p-2 rounded-lg flex flex-col min-h-0">
                 <div class="text-[11px] text-[#CBD5E1] mb-1.5 font-medium shrink-0">组合偏离差异 (权益敞口)</div>
                 <div class="flex-1 min-h-0">
@@ -745,6 +763,7 @@ use([CanvasRenderer, BarChart, LineChart, GridComponent, TooltipComponent, Legen
 /** 默认首页是门户 Tab，CommitteeView 不会挂载；在此拉取 BFF 快照，避免「从未发请求」 */
 onMounted(() => {
   void fetchMeetingResolution();
+  setTimeout(() => dashboardLoading.value = false, 800);
 });
 
 // ── cn utility ──────────────────────────────────────────────────────────────
@@ -966,6 +985,7 @@ const PERFORMANCE_DATA = [
 ];
 
 // ── State ─────────────────────────────────────────────────────────────────────
+const dashboardLoading = ref(true);
 const fullScreenPanel   = ref<PanelId | null>(null);
 const selectedProcessStep = ref<NodeId | null>(3);
 const selectedPortfolios  = ref<string[]>(['p1']);

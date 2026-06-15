@@ -255,3 +255,20 @@ class RemindRequest(BaseModel):
 
     member_name: str
     member_id: int | None = None
+
+
+class VoteConfigRequest(BaseModel):
+    """POST /meetings/{meeting_id}/vote-config 请求。"""
+
+    meeting_id: int = Field(..., description="会议 ID")
+
+
+class LighthouseModelRequest(BaseModel):
+    """POST /lighthouse/run 请求。"""
+
+    meeting_id: int | None = Field(None, description="会议 ID。传入则从数据库读取投票记录和日期")
+    meeting_date: str | None = Field(None, description="会议日期，格式 YYYYMMDD。不传 meeting_id 时必填")
+    vote_config: dict[str, dict[str, int]] | None = Field(
+        None,
+        description="投票统计。不传 meeting_id 时必填，格式如 {'固收-存单': {'3': 8, '4': 1}}",
+    )

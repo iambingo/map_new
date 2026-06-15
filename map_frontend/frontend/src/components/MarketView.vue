@@ -17,13 +17,14 @@
           />
         </div>
         <button
-          class="flex items-center space-x-2 bg-[#1A1E2B] border border-[#2E3348] px-3 py-1.5 rounded text-[13px] font-mono text-[#94A3B8] hover:text-[#B4BAC9] hover:border-[#3E4660] transition-colors"
-          title="将收益率数据导出为 2D 扁平横表 (Excel)"
+          disabled
+          class="flex items-center space-x-2 bg-[#1A1E2B] border border-[#2E3348] px-3 py-1.5 rounded text-[13px] font-mono text-[#94A3B8] hover:text-[#B4BAC9] hover:border-[#3E4660] transition-colors opacity-40 cursor-not-allowed"
+          title="即将推出"
         >
           <DataLine class="w-3.5 h-3.5" />
           <span>导出明细 (Excel)</span>
         </button>
-        <button class="flex items-center space-x-2 bg-[#2A2D3A] border border-[#2E3348] px-3 py-1.5 rounded text-[13px] font-medium text-[#E8ECF4] hover:bg-[#2E3348] transition-colors shadow-sm">
+        <button disabled class="flex items-center space-x-2 bg-[#2A2D3A] border border-[#2E3348] px-3 py-1.5 rounded text-[13px] font-medium text-[#E8ECF4] hover:bg-[#2E3348] transition-colors shadow-sm opacity-40 cursor-not-allowed" title="即将推出">
           <Setting class="w-3.5 h-3.5" />
           <span>基准配置</span>
         </button>

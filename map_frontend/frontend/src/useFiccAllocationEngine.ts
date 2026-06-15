@@ -23,6 +23,16 @@ interface UseFiccAllocationEngineParams {
   FICC_PRODUCT_COLORS: Record<FiccProductKey, string>;
 }
 
+interface FiccPositionBase {
+  liquidity: number;
+  stableAsset: number;
+  constantDurationCredit: number;
+  unifiedAdjustment: number;
+  activeTrading: number;
+  equityUsage: number;
+  durationCenter: number;
+}
+
 export function useFiccAllocationEngine(params: UseFiccAllocationEngineParams) {
   const FICC_POSITION_TIERS = [
     { label: '低配', lo: 0, hi: 33 },
@@ -141,7 +151,7 @@ export function useFiccAllocationEngine(params: UseFiccAllocationEngineParams) {
     };
   }));
 
-  const FICC_POSITION_BASE = {
+  const FICC_POSITION_BASE: Record<FiccProductKey, FiccPositionBase> = {
     lowVol: {
       liquidity: 6,
       stableAsset: 75,
@@ -160,7 +170,7 @@ export function useFiccAllocationEngine(params: UseFiccAllocationEngineParams) {
       equityUsage: 1.5,
       durationCenter: 0.9,
     },
-  } as const;
+  };
 
   const ficcAllocationDetailRows = computed(() => (Object.keys(params.FICC_PRODUCT_LABELS) as FiccProductKey[]).map(pk => {
     const decision = params.ficcProductDecisions[pk];

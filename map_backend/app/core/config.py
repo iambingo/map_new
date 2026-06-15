@@ -21,6 +21,25 @@ def _resolve_config_path() -> Path:
     return Path(__file__).resolve().parents[2] / "config.json"
 
 
+def _coerce_env_value(key: str, env_val: str) -> object:
+    """
+    将环境变量字符串转为 Settings 字段对应的正确类型。
+    处理 bool / int / float 的常见转换，其余保持原字符串。
+    """
+    # bool 转换：Pydantic 不直接读字符串，需手动映射
+    if key in ("DEBUG", "MAP_USE_SQLITE"):
+        return env_val.lower() in ("true", "1", "yes")
+    # int 转换
+    if key in ("DB_PORT", "DB_POOL_SIZE", "DB_MAX_OVERFLOW", "DB_POOL_RECYCLE",
+               "REDIS_PORT", "REDIS_DB", "REDIS_MAX_CONNECTIONS",
+               "ACCESS_TOKEN_EXPIRE_MINUTES", "EXTERNAL_HTTP_RETRIES"):
+        return int(env_val)
+    # float 转换
+    if key == "EXTERNAL_HTTP_TIMEOUT":
+        return float(env_val)
+    return env_val
+
+
 def _load_config() -> dict:
     config_path = _resolve_config_path()
     if not config_path.exists():
@@ -29,7 +48,15 @@ def _load_config() -> dict:
             f"Set CONFIG_PATH env var to override, or place config.json in the project root."
         )
     with open(config_path, "r", encoding="utf-8") as f:
-        return json.load(f)
+        data = json.load(f)
+
+    # 环境变量可覆盖 config.json 同名字段
+    # 用于 PaaS 平台部署时：同一份 config.json + 平台环境变量区分环境
+    for key in Settings.model_fields.keys():
+        if env_val := os.environ.get(key):
+            data[key] = _coerce_env_value(key, env_val)
+
+    return data
 
 
 class Settings(BaseModel):
@@ -113,14 +140,14 @@ class Settings(BaseModel):
 
     # ── SSO / 统一门户 ────────────────────────────────────────────────────────
     SSO_VALIDATE_URL: str = Field(
-        default="http://pawm-pfp-service.gateway.dev.pab.com.cn/wmuc/loginServer/loginValidateToken",
+        default="http://pawm-pfp-service-gateway.dev.pab.com.cn/wmuc/loginServer/loginValidateToken",
         description="门户 token 校验远程接口地址（后端调用）",
     )
     SSO_LOGIN_URL: str = Field(
         default="http://wm.dev.paic.com.cn/lckj/pawm-uc/account_login.html",
         description=(
             "门户登录页地址（浏览器跳转）。dev=wm.dev.paic / fat=wm.stg.paic / prd=wm.paic。"
-            "前端在用户未登录时把浏览器跳到 `${SSO_LOGIN_URL}?urI=<我方根 URL>`。"
+            "前端在用户未登录时把浏览器跳到 `${SSO_LOGIN_URL}?url=<我方根 URL>`。"
         ),
     )
     SSO_LOGIN_REDIRECT_URL: str = Field(

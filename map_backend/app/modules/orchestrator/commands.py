@@ -14,7 +14,7 @@ modules/orchestrator/commands.py — 跨域指令登记与分发
 """
 import logging
 import time
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -152,7 +152,7 @@ async def _dispatch_mq(cmd: PendingCommand) -> None:
             "command_type": cmd.command_type,
             "user_id": cmd.user_id,
             "payload": cmd.payload,
-            "dispatched_at": datetime.now(UTC).isoformat(),
+            "dispatched_at": datetime.now(timezone.utc).isoformat(),
         },
         keys=cmd.idempotency_key,
     )

@@ -246,6 +246,12 @@
           <span class="text-[#3B9EFF]">{{ batchCtx.taskTag }}</span>
         </div>
 
+        <!-- TAA Context Banner (auto-populated from rebalanceTarget / pendingModelWeights) -->
+        <div v-if="taaContextBanner" class="flex items-center gap-1.5 ml-2 text-[10px] font-mono bg-[#3B9EFF]/8 border border-[#3B9EFF]/25 px-2 py-1 rounded">
+          <span class="text-[#3B9EFF]">⟳</span>
+          <span class="text-[#94A3B8]">{{ taaContextBanner }}</span>
+        </div>
+
         <div class="ml-auto flex items-center gap-3 text-[#555E75]">
           <span>产品 <span class="text-[#E8ECF4] font-semibold">{{ products.length }}只</span></span>
           <div class="w-px h-3 bg-[#2E3348]"></div>
@@ -283,12 +289,12 @@
 
           <template v-if="mergedEngineMode === 'proportional' || mergedEngineMode === 'target'">
             <div class="flex items-center gap-1 shrink-0">
-              <span class="text-[10px] text-[#64748B]">调仓总金额</span>
+              <span class="text-[10px] text-[#64748B]">调仓金额 (Δ)</span>
               <input
                 v-model.number="allocAmount"
                 type="number"
-                placeholder="万元"
-                class="h-6 w-24 bg-[#0E1118] border border-[#2E3348] hover:border-[#3B9EFF]/40 focus:border-[#3B9EFF] rounded text-[11px] text-[#E8ECF4] px-2 outline-none transition-colors text-right font-mono"
+                placeholder="+申购/-赎回"
+                class="h-6 w-28 bg-[#0E1118] border border-[#2E3348] hover:border-[#3B9EFF]/40 focus:border-[#3B9EFF] rounded text-[11px] text-[#E8ECF4] px-2 outline-none transition-colors text-right font-mono"
               />
               <span class="text-[10px] text-[#64748B]">万</span>
             </div>
@@ -843,7 +849,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, watch } from 'vue';
+import { ref, computed, reactive, watch, onMounted } from 'vue';
 import {
   ArrowRight, ArrowDown, EditPen,
   CircleCheckFilled, WarningFilled, Refresh, Plus,
@@ -941,6 +947,26 @@ const allocAmount    = ref<number | null>(null);
 const allocTarget    = ref<number | null>(null);
 const sandboxModelResult = ref<{ name: string; value: string; change: string }[]>([]);
 const isSandboxModelRunning = ref(false);
+
+// Banner message populated by onMounted when context is carried in
+const taaContextBanner = ref<string | null>(null);
+
+// ── Bug 1 Fix: 联动任务篮 / TAA 目标 ────────────────────────────────────
+onMounted(() => {
+  // Priority 1: 再平衡缺口金额直接带入调仓Delta
+  if (rebalanceTarget.value && rebalanceTarget.value.gapAmount > 0) {
+    allocAmount.value = rebalanceTarget.value.gapAmount;
+    mergedEngineMode.value = 'target';
+    taaContextBanner.value = `已带入再平衡目标缺口: ${rebalanceTarget.value.gapAmount.toLocaleString('zh-CN')} 万 · 按现有NAV权重分配`;
+    return;
+  }
+  // Priority 2: 待消费的 TAA 模型权重
+  const pw = sharedIntentState.pendingModelWeights;
+  if (pw && pw.targetTab === 'taa' && Object.keys(pw.weights).length > 0) {
+    mergedEngineMode.value = 'target';
+    taaContextBanner.value = `已带入 TAA 模型 [${pw.modelName}] 目标权重 · 请输入调仓Delta金额后执行分配`;
+  }
+});
 
 function executeQuantModel() {
   isSandboxModelRunning.value = true;
@@ -1216,31 +1242,65 @@ function stopEdit() {
   editingCell.value = null;
 }
 
+// ── Bug 2 & 3 Fix: 调仓金额是Delta，单位统一为万元 ──────────────────────
+// allocAmount 输入框单位: 万元，代表变动量(正=申购, 负=赎回)
+// products.beforeAmt / afterAmt 单位: 万元
+// 底层分配到个券时 delta(万元) * 10000 → 元 供外部系统使用，表格展示仍用万元
 function applyAllocation() {
   const n = products.value.length;
   if (!n) return;
-  if ((mergedEngineMode.value === 'proportional' || mergedEngineMode.value === 'target') && allocAmount.value) {
-    const total = allocAmount.value * 10000;
+
+  if ((mergedEngineMode.value === 'proportional' || mergedEngineMode.value === 'target') && allocAmount.value != null) {
+    const deltaWan = allocAmount.value; // 万元 Delta（正=申购 / 负=赎回）
+
     if (mergedEngineMode.value === 'proportional') {
-      const avg = total / n;
-      products.value.forEach(p => { p.afterAmt = Math.round(avg) / 100; p.deviation = Math.round((p.afterAmt - p.beforeAmt) / p.beforeAmt * 10000) / 100; });
+      // 等比平摊: 每只产品承接相同Delta
+      // 存精确浮点，避免每行独立四舍五入导致总量累计误差；toLocaleString 展示时再取整
+      const deltaEach = deltaWan / n;
+      products.value.forEach(p => {
+        p.afterAmt = p.beforeAmt + deltaEach;
+        p.deviation = p.beforeAmt > 0
+          ? Math.round((p.afterAmt - p.beforeAmt) / p.beforeAmt * 10000) / 100
+          : 0;
+        distributeToAtoms(p);
+      });
     } else {
+      // 目标对齐: 按现有NAV占比分配Delta，同样存精确浮点
       const navTotal = products.value.reduce((s, p) => s + p.beforeAmt, 0);
       products.value.forEach(p => {
         const ratio = navTotal > 0 ? p.beforeAmt / navTotal : 1 / n;
-        p.afterAmt = Math.round(total * ratio * 100) / 100;
-        p.deviation = Math.round((p.afterAmt - p.beforeAmt) / p.beforeAmt * 10000) / 100;
+        p.afterAmt = p.beforeAmt + deltaWan * ratio;
+        p.deviation = p.beforeAmt > 0
+          ? Math.round((p.afterAmt - p.beforeAmt) / p.beforeAmt * 10000) / 100
+          : 0;
+        distributeToAtoms(p);
       });
     }
-  } else if (mergedEngineMode.value === 'concentration' && allocTarget.value) {
-    const target = concentrationTarget.value;
-    const maxW = allocTarget.value / 100;
-    const tgt = products.value.find(p => p.id === target);
+  } else if (mergedEngineMode.value === 'concentration' && allocTarget.value != null) {
+    // 浓度控制: 目标产品按目标浓度(%)增仓
+    const tgt = products.value.find(p => p.id === concentrationTarget.value);
     if (tgt) {
-      tgt.afterAmt = Math.round(tgt.beforeAmt * (1 + maxW) * 100) / 100;
-      tgt.deviation = Math.round((tgt.afterAmt - tgt.beforeAmt) / tgt.beforeAmt * 10000) / 100;
+      const maxW = allocTarget.value / 100;
+      tgt.afterAmt = Math.round(tgt.beforeAmt * (1 + maxW) * 10) / 10;
+      tgt.deviation = tgt.beforeAmt > 0
+        ? Math.round((tgt.afterAmt - tgt.beforeAmt) / tgt.beforeAmt * 10000) / 100
+        : 0;
+      distributeToAtoms(tgt);
     }
   }
+}
+
+// 将产品级Delta按个券持仓比例级联到个券
+// 个券 before/after 与产品同单位(万元)
+function distributeToAtoms(p: Product) {
+  const productDeltaWan = p.afterAmt - p.beforeAmt;
+  const bondTotal = p.bonds.reduce((s, b) => s + b.before, 0);
+  if (bondTotal <= 0 || productDeltaWan === 0) return;
+  p.bonds.forEach(b => {
+    const ratio = b.before / bondTotal;
+    b.after = Math.round((b.before + productDeltaWan * ratio) * 10) / 10;
+    b.change = Math.round((b.after - b.before) * 10) / 10;
+  });
 }
 
 function resetAllocation() {

@@ -236,12 +236,6 @@
                   </div>
                 </div>
                 <div class="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                  <button class="text-[#7B8BA3] hover:text-[#B4BAC9] p-1 rounded hover:bg-[#2A2D3A] transition-colors">
-                    <Share class="w-3.5 h-3.5" />
-                  </button>
-                  <button class="text-[#7B8BA3] hover:text-[#B4BAC9] p-1 rounded hover:bg-[#2A2D3A] transition-colors">
-                    <MoreFilled class="w-3.5 h-3.5" />
-                  </button>
                 </div>
               </div>
               <h3 class="text-[15px] font-bold text-white leading-snug mb-2 cursor-pointer group-hover:text-purple-100 transition-colors duration-200">
@@ -276,10 +270,10 @@
                   <Star v-else class="w-3.5 h-3.5 group-hover/lb:scale-110 transition-transform" />
                   <span>{{ likedIds.has(vp.id) ? vp.likes + 1 : vp.likes }}</span>
                 </button>
-                <button class="flex items-center space-x-1.5 text-xs font-mono text-[#4A5568] hover:text-[#3B9EFF] transition-colors duration-150">
+                <span class="flex items-center space-x-1.5 text-xs font-mono text-[#4A5568]">
                   <ChatDotRound class="w-3.5 h-3.5" />
                   <span>{{ vp.comments }}</span>
-                </button>
+                </span>
                 <span class="flex items-center space-x-1.5 text-xs font-mono text-[#7B8BA3]">
                   <View class="w-3.5 h-3.5" />
                   <span>{{ vp.views }}</span>

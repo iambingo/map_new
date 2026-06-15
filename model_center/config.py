@@ -14,6 +14,13 @@ MODEL_CONFIG = {
     "weight_upper": 1.0,     # 全局默认上限（被单资产约束覆盖）
 }
 
+# ── 1.3 报告展示配置 ─────────────────────────────────────────
+REPORT_CONFIG = {
+    # 增配/减配判断阈值：w* 相对 w_mkt 的相对变化超过该比例即触发
+    # 例：0.50 表示权重增加 ≥50% 标记为增配，减少 ≥50% 标记为减配
+    "action_threshold": 0.50,
+}
+
 # ── 1.3 流动性配置 ──────────────────────────────────────────
 # 流动性不进 BL，直接锁定，其余部分归一化后进 BL
 LIQUIDITY_CONFIG = {
@@ -21,7 +28,7 @@ LIQUIDITY_CONFIG = {
     "name":   "流动性",
 }
 
-# ── 1.4 SAA 配置 ────────────────────────────────────────────
+# ── 1.4 SAA 配置 ────────────────────────────────────────────  # TODO三个产品配置不同，传参选择
 # 定义每个 SAA 分组的总权重
 # 注意：这里的权重是扣除流动性之后的总组合占比
 # 所有分组加总 = 1 - 流动性权重 = 0.94
@@ -40,91 +47,104 @@ SAA_CONFIG = {
 # duration_method: constant / wind（仅 fixed_income）
 ASSET_CONFIG = {
     "固收-存单": {
-        "index_code":      "H11155.CSI",
-        "saa_group":       "固收",
-        "category":        "固收",        # ← 新增
-        "asset_type":      "fixed_income",
-        "duration_method": "constant",
-        "duration_value":  1.0,
+        "price_source":     "yield_curve",
+        "yield_curve_code": "CBD21001.WI",  # 待替换为实际中债登曲线代码
+        "yield_curve_term": 1.0,            # 期限（年），同时用作久期
+        "saa_group":        "固收",
+        "category":         "固收",
+        "asset_type":       "fixed_income",
     },
     "固收-信用": {
-        "index_code":      "CBA05641.CS",
-        "saa_group":       "固收",
-        "category":        "固收",        # ← 新增
-        "asset_type":      "fixed_income",
-        "duration_method": "wind",
-        "wind_code":       "CBA05641.CS",
+        "price_source":     "yield_curve",
+        "yield_curve_code": "CBD21003.WI",  # 待替换为实际中债登曲线代码
+        "yield_curve_term": 3.0,
+        "saa_group":        "固收",
+        "category":         "固收",
+        "asset_type":       "fixed_income",
     },
     "固收-利率10Y": {
-        "index_code":      "H11006.CSI",
-        "saa_group":       "固收",
-        "category":        "固收",        # ← 新增
-        "asset_type":      "fixed_income",
-        "duration_method": "wind",
-        "wind_code":       "H11006.CSI",
+        "price_source":     "yield_curve",
+        "yield_curve_code": "CBD21010.WI",  # 待替换为实际中债登曲线代码
+        "yield_curve_term": 10.0,
+        "saa_group":        "固收",
+        "category":         "固收",
+        "asset_type":       "fixed_income",
     },
     "固收-利率30Y": {
-        "index_code":      "H11008.CSI",
-        "saa_group":       "固收",
-        "category":        "固收",        # ← 新增
-        "asset_type":      "fixed_income",
-        "duration_method": "wind",
-        "wind_code":       "H11008.CSI",
+        "price_source":     "yield_curve",
+        "yield_curve_code": "CBD21030.WI",  # 待替换为实际中债登曲线代码
+        "yield_curve_term": 30.0,
+        "saa_group":        "固收",
+        "category":         "固收",
+        "asset_type":       "fixed_income",
     },
     "含权-转债": {
+        "price_source":    "index",
         "index_code":      "000832.CSI",
         "saa_group":       "其他权益",
-        "category":        "含权",        # ← 新增
+        "category":        "含权",
         "asset_type":      "equity",
     },
     "含权-二级债基": {
+        "price_source":    "index",
         "index_code":      "885007.WI",
         "saa_group":       "其他权益",
-        "category":        "含权",        # ← 新增
+        "category":        "含权",
         "asset_type":      "equity",
     },
     "含权-红利": {
-        "index_code":      "000961.CSI",
+        "price_source":    "index",
+        "index_code":      "000961.CSI",    # H00922.CSI
         "saa_group":       "权益-红利",
-        "category":        "含权",        # ← 新增
+        "category":        "含权",
         "asset_type":      "equity",
     },
     "含权-偏股混": {
+        "price_source":    "index",
         "index_code":      "885001.WI",
         "saa_group":       "其他权益",
-        "category":        "含权",        # ← 新增
+        "category":        "含权",
         "asset_type":      "equity",
     },
     "含权-恒生科技": {
+        "price_source":    "index",
         "index_code":      "513310.SH",
         "saa_group":       "权益-港股",
-        "category":        "含权",        # ← 新增
+        "category":        "含权",
         "asset_type":      "equity",
     },
     "另类-黄金": {
+        "price_source":    "index",
         "index_code":      "518880.SH",
         "saa_group":       "另类-黄金",
-        "category":        "另类",        # ← 新增
+        "category":        "另类",
         "asset_type":      "alternative",
     },
 }
 
-# ── 1.6 单大类权重约束（层面B：总组合占比）──────────────────
+# ── 1.6 固收品类动态约束幅度 ────────────────────────────────
+# 固收四个品类的上下限基于风险平价权重(w_mkt)动态生成：
+#   lower = w_mkt * (1 - band)
+#   upper = w_mkt * (1 + band)
+# band=0.5 表示允许在风险平价基础上上下浮动50%
+FIXED_INCOME_BAND = 0.3
+
+# ── 1.7 单大类权重约束（层面B：总组合占比）──────────────────
 # 控制 BL 最终输出 w* 里每个大类的总组合占比
 # lower/upper 均为总组合的绝对权重
 # 不填则使用 MODEL_CONFIG 里的全局默认值
-# [可替换] 后续需要调整直接改这里，不用动任何函数
+# 固收品类的约束由 FIXED_INCOME_BAND + w_mkt 动态生成，无需在此填写
 WEIGHT_CONSTRAINTS = {
-    "固收-存单":     {"lower": 0.00, "upper": 0.50},
-    "固收-信用":     {"lower": 0.00, "upper": 0.40},
-    "固收-利率10Y":  {"lower": 0.00, "upper": 0.35},
-    "固收-利率30Y":  {"lower": 0.00, "upper": 0.20},
-    "含权-转债":     {"lower": 0.00, "upper": 0.10},
-    "含权-二级债基": {"lower": 0.00, "upper": 0.10},
-    "含权-红利":     {"lower": 0.00, "upper": 0.05},
-    "含权-偏股混":   {"lower": 0.00, "upper": 0.05},
-    "含权-恒生科技": {"lower": 0.00, "upper": 0.05},
-    "另类-黄金":     {"lower": 0.00, "upper": 0.03},
+    # "固收-存单":     {"lower": 0.00, "upper": 0.50},
+    # "固收-信用":     {"lower": 0.00, "upper": 0.40},
+    # "固收-利率10Y":  {"lower": 0.00, "upper": 0.35},
+    # "固收-利率30Y":  {"lower": 0.00, "upper": 0.20},
+    # "含权-转债":     {"lower": 0.00, "upper": 0.10},
+    # "含权-二级债基": {"lower": 0.00, "upper": 0.10},
+    # "含权-红利":     {"lower": 0.00, "upper": 0.05},
+    # "含权-偏股混":   {"lower": 0.00, "upper": 0.05},
+    # "含权-恒生科技": {"lower": 0.00, "upper": 0.05},
+    # "另类-黄金":     {"lower": 0.00, "upper": 0.03},
 }
 
 # ── 1.7 观点幅度配置 ─────────────────────────────────────────
@@ -201,7 +221,7 @@ SCORE_RANGE_CONFIG = {
     },
 }
 
-# ── 1.8 本次投委会投票 ───────────────────────────────────────
+# ── 1.8 本次投委会投票 ───────────────────────────────────────   # TODO数据库传入
 VOTES_CONFIG = {
     "固收-存单":     {3: 8, 4: 1},
     "固收-信用":     {3: 6, 4: 3},

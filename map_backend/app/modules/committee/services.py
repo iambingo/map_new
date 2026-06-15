@@ -16,11 +16,15 @@ modules/committee/services.py — 投委会业务逻辑层
   │  aggregate_ficc_resolution()  核心计票聚合 + 发布决议                     │
   └───────────────────────────────────────────────────────────────────────────┘
 """
+import asyncio
+import csv
+import json
 import statistics
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -160,7 +164,7 @@ def _aggregate_votes(
     return {
         "meeting_type": meeting_type.value,
         "total_voters": len(vote_records),
-        "computed_at": datetime.now(UTC).isoformat(),
+        "computed_at": datetime.now(timezone.utc).isoformat(),
         "choice_results": choice_results,
         "numeric_results": numeric_results,
     }
@@ -258,7 +262,7 @@ async def submit_vote(
     if meeting.status == MeetingStatus.DRAFT:
         meeting.status = MeetingStatus.VOTING
 
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
 
     # 构建存储 JSON
     vote_json: dict[str, Any] = {}
@@ -380,7 +384,7 @@ async def aggregate_ficc_resolution(
         IcResolution.is_deleted == 0,
     )
     resolution = (await db.execute(res_stmt)).scalar_one_or_none()
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
 
     if resolution:
         resolution.aggregated_taa = aggregated
@@ -441,7 +445,7 @@ async def get_committee_page_context(
             IcVoteRecord.meeting_id == meeting.id,
             IcVoteRecord.is_deleted == 0,
         )
-        .order_by(IcVoteRecord.submitted_at.desc().nulls_last())
+        .order_by(IcVoteRecord.submitted_at.desc())
     )
     vote_rows = list((await db.execute(votes_stmt)).scalars().all())
 
@@ -535,7 +539,7 @@ async def get_mixed_sessions(
             IcVoteRecord.meeting_id == meeting.id,
             IcVoteRecord.is_deleted == 0,
         )
-        .order_by(IcVoteRecord.submitted_at.desc().nulls_last())
+        .order_by(IcVoteRecord.submitted_at.desc())
     )
     votes = list((await db.execute(votes_stmt)).scalars().all())
 
@@ -633,3 +637,211 @@ async def send_remind(
 ) -> dict[str, str]:
     """发送催办通知（桩实现：仅记录日志，后续对接消息中心）。"""
     return {"status": "ok", "message": f"已向 {payload.member_name} 发送催办通知"}
+
+
+# ── BL 模型相关 ──────────────────────────────────────────────────────────────
+
+
+async def get_meeting_vote_config(
+    db: AsyncSession,
+    meeting_id: int,
+) -> dict[str, dict[str, int]]:
+    """
+    获取指定会议的投票统计（section_a 资产评分聚合）。
+
+    从数据库读取该会议的所有有效投票记录，按资产和评分聚合票数。
+    """
+    await _fetch_active_meeting(db, meeting_id)
+
+    votes_stmt = select(IcVoteRecord).where(
+        IcVoteRecord.meeting_id == meeting_id,
+        IcVoteRecord.is_deleted == 0,
+    )
+    votes: list[IcVoteRecord] = list(
+        (await db.execute(votes_stmt)).scalars().all()
+    )
+
+    return aggregate_vote_config(votes)
+
+
+def aggregate_vote_config(
+    vote_records: list[IcVoteRecord],
+) -> dict[str, dict[str, int]]:
+    """
+    统计指定会议下所有投票记录的 section_a（资产评分）。
+
+    按资产聚合各评分的票数，例如：
+        {"固收-存单": {"3": 8, "4": 1}}
+    表示"固收-存单"资产评分为 3 的有 8 票，评分为 4 的有 1 票。
+    """
+    buckets: dict[str, dict[str, int]] = {}
+
+    for record in vote_records:
+        section_a: dict = (record.vote_json or {}).get("section_a", {})
+        for asset_name, score in section_a.items():
+            score_key = str(int(score))
+            buckets.setdefault(asset_name, {})
+            buckets[asset_name][score_key] = buckets[asset_name].get(score_key, 0) + 1
+
+    return buckets
+
+
+async def call_lighthouse_model(
+    db: AsyncSession,
+    meeting_id: int | None = None,
+    meeting_date: str | None = None,
+    vote_config: dict[str, dict[str, int]] | None = None,
+) -> tuple[list[dict], list[dict]]:
+    """
+    调用 Lighthouse BL 模型，返回 HTML 文件列表和 weights.csv 的 JSON 数据。
+
+    两种使用模式：
+      模式 A（传 meeting_id）：从数据库读取投票记录和 scheduled_at
+      模式 B（不传 meeting_id）：需要手动传入 meeting_date 和 vote_config
+
+    流程：
+      1. 确定 meeting_date 和 vote_config（数据库 or 入参）
+      2. 发送给 Lighthouse 平台
+      3. 轮询任务状态直到完成
+      4. 下载文件：summary_low.html / summary_medium.html / summary_fix.html
+         weights.csv → 解析为 JSON
+
+    Returns:
+        (html_files, weights_json)
+        html_files: [{"file_name": "summary_fix.html", "content": <base64>}, ...]
+        weights_json: weights.csv 解析后的 JSON 数组（每行一个 dict）
+    """
+    # 1. 确定 meeting_date 和 vote_config
+    if meeting_id is not None:
+        # 模式 A：从数据库读取
+        meeting = await _fetch_active_meeting(db, meeting_id)
+
+        if meeting_date:
+            resolved_date = meeting_date
+        elif meeting.scheduled_at is not None:
+            resolved_date = meeting.scheduled_at.strftime("%Y%m%d")
+        else:
+            raise BusinessRuleException(
+                f"会议 {meeting_id} 未设置 scheduled_at，且未传入 meeting_date 参数"
+            )
+
+        votes_stmt = select(IcVoteRecord).where(
+            IcVoteRecord.meeting_id == meeting_id,
+            IcVoteRecord.is_deleted == 0,
+        )
+        votes: list[IcVoteRecord] = list(
+            (await db.execute(votes_stmt)).scalars().all()
+        )
+
+        if not votes:
+            raise BusinessRuleException(f"会议 {meeting_id} 无有效投票记录")
+
+        resolved_vote_config = aggregate_vote_config(votes)
+    else:
+        # 模式 B：完全使用入参
+        if not meeting_date:
+            raise BusinessRuleException("不传 meeting_id 时，meeting_date 为必填")
+        if not vote_config:
+            raise BusinessRuleException("不传 meeting_id 时，vote_config 为必填")
+
+        resolved_date = meeting_date
+        resolved_vote_config = vote_config
+
+    # 2. 调用 Lighthouse 接口
+    lighthouse_payload = {
+        "meeting_date": resolved_date,
+        "vote_config": resolved_vote_config,
+    }
+
+    config = {
+        "appCode": "f7a94ef56bda481d897a7450d8361bf3",
+        "operationType": "run",
+    }
+    config["args"] = json.dumps(lighthouse_payload, ensure_ascii=False)
+
+    headers = {"currentLoginUsername": "SHIHONGYI344"}
+    url = "http://pawm-pfp-83022-gateway.fat001.qa.pab.com.cn/data/agm/noRegister/callModel/601327f77528421b99c38bb23206ea7e"
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(url, json=config, headers=headers)
+        response.raise_for_status()
+        result = response.json()
+
+    run_id = result["data"]
+
+    # 4. 轮询查询
+    polling_interval = 2
+    max_retries = 30
+
+    for attempt in range(1, max_retries + 1):
+        config_query = {
+            "appCode": "f7a94ef56bda481d897a7450d8361bf3",
+            "operationType": "query",
+            "runId": run_id,
+        }
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, json=config_query, headers=headers)
+            response.raise_for_status()
+            poll_result = response.json()
+
+        run_status = poll_result.get("data", {}).get("runStatus")
+
+        if run_status == "SUCCESS":
+            break
+        elif run_status == "FAILED":
+            raise RuntimeError("Lighthouse 任务执行失败")
+        elif run_status == "PENDING":
+            if attempt < max_retries:
+                await asyncio.sleep(polling_interval)
+            else:
+                raise TimeoutError("Lighthouse 任务执行超时")
+        else:
+            if attempt < max_retries:
+                await asyncio.sleep(polling_interval)
+            else:
+                raise RuntimeError(f"未知 Lighthouse 任务状态: {run_status}")
+    else:
+        raise TimeoutError("Lighthouse 轮询次数用尽")
+
+    # 5. 下载并处理文件
+    file_list = poll_result.get("data", {}).get("fileList", [])
+    if not file_list:
+        raise RuntimeError("Lighthouse 返回的文件列表为空")
+
+    import base64
+
+    html_files: list[dict] = []
+    weights_json: list[dict] = []
+
+    for file_info in file_list:
+        original_filename = file_info.get("fileName")
+        file_url = file_info.get("fileUrl")
+
+        if not original_filename or not file_url:
+            continue
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            file_response = await client.get(file_url)
+            file_response.raise_for_status()
+            content = file_response.content
+
+        # summary_ 开头的 csv 是 HTML 报告，转 base64
+        if original_filename.startswith("summary_") and original_filename.endswith(".csv"):
+            html_name = original_filename.replace(".csv", ".html")
+            html_files.append({
+                "file_name": html_name,
+                "content": base64.b64encode(content).decode("ascii"),
+            })
+        elif original_filename == "weights.csv":
+            content_str = content.decode("utf-8")
+            reader = csv.DictReader(content_str.splitlines())
+            weights_json = [dict(row) for row in reader]
+        else:
+            # 其他文件也按 HTML 保存
+            html_files.append({
+                "file_name": original_filename,
+                "content": base64.b64encode(content).decode("ascii"),
+            })
+
+    return html_files, weights_json

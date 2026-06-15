@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Query
@@ -286,7 +286,7 @@ async def _build_base_snapshot(db: AsyncSession) -> dict[str, Any]:
         urgency_reason = "暂无资配指引或头寸数据，无法评估偏离度"
 
     return {
-        "snapshot_at":    datetime.now(UTC).isoformat(),
+        "snapshot_at":    datetime.now(timezone.utc).isoformat(),
         "taa_guidance": {
             "source_resolution": resolution_meta,
             "choice_results":    choice_results,
@@ -305,7 +305,7 @@ async def _build_base_snapshot(db: AsyncSession) -> dict[str, Any]:
 def _empty_snapshot() -> dict[str, Any]:
     """Redis + DB + Adapter 全部失败时的保底兜底快照。"""
     return {
-        "snapshot_at":    datetime.now(UTC).isoformat(),
+        "snapshot_at":    datetime.now(timezone.utc).isoformat(),
         "taa_guidance":   {"source_resolution": None, "choice_results": {}, "numeric_results": {}, "published_at": None},
         "positions":      None,
         "deviation_analysis": {},

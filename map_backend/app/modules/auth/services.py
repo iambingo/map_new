@@ -2,7 +2,7 @@
 app/modules/auth/services.py — SSO 认证业务逻辑
 包含：门户 token 校验、用户查找/创建、登录态更新。
 """
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 import httpx
 from sqlalchemy import select
@@ -46,20 +46,22 @@ async def validate_sso_token(token_id: str) -> PortalUserInfo:
 def _parse_portal_response(raw: dict) -> PortalUserInfo:
     """
     将门户返回的原始 JSON 解析为 PortalUserInfo。
-    需根据门户实际返回格式调整映射关系。
+    门户实际返回格式：{"data": {"userId":"xxx","userName":"xxx","realName":"xxx","mailAddr":"xxx"}}
     """
-    # 常见门户返回格式适配 — 按实际返回结构调整
+    # 门户响应包裹在 data 键下
+    data = raw.get("data") or raw
+
     return PortalUserInfo(
         user_id=str(
-            raw.get("userId")
-            or raw.get("user_id")
-            or raw.get("uid")
-            or raw.get("id", "")
+            data.get("userId")
+            or data.get("user_id")
+            or data.get("uid")
+            or data.get("id", "")
         ),
-        username=raw.get("userName") or raw.get("username") or raw.get("loginName") or "",
-        display_name=raw.get("displayName") or raw.get("display_name") or raw.get("name") or None,
-        email=raw.get("email") or None,
-        department=raw.get("department") or raw.get("deptName") or None,
+        username=data.get("userName") or data.get("username") or data.get("loginName") or "",
+        display_name=data.get("realName") or data.get("displayName") or data.get("display_name") or data.get("name") or None,
+        email=data.get("mailAddr") or data.get("email") or None,
+        department=data.get("department") or data.get("deptName") or None,
     )
 
 
@@ -110,7 +112,7 @@ async def find_or_create_user(
 
 async def update_last_login(db: AsyncSession, user: MapUser) -> None:
     """更新用户最近登录时间。"""
-    user.last_login_at = datetime.now(UTC)
+    user.last_login_at = datetime.now(timezone.utc)
     db.add(user)
     await db.commit()
 

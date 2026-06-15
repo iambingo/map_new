@@ -2,19 +2,43 @@
 dependencies.py — FastAPI 全局依赖注入
 将 core 层的原始生成器/工具包装为 Annotated 类型，统一供路由函数使用。
 """
-from typing import Annotated
+from typing import Annotated, AsyncGenerator
 
 from fastapi import Cookie, Depends, Header, HTTPException, status
 from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.db_tdsql import get_db
+from app.core.db_tdsql import get_db, _ensure_engine_and_factory
 from app.core.security import decode_access_token
 
 # ── DB Session ────────────────────────────────────────────────────────────────
 
 DBSession = Annotated[AsyncSession, Depends(get_db)]
+
+
+async def get_db_optional() -> AsyncGenerator[AsyncSession | None, None]:
+    """
+    可选 DB Session：连接失败时返回 None 而非抛出异常。
+    用于根路径欢迎页等无 DB 也能返回的端点。
+    """
+    try:
+        factory = _ensure_engine_and_factory()
+    except Exception:
+        yield None
+        return
+    async with factory() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+
+
+OptionalDB = Annotated[AsyncSession | None, Depends(get_db_optional)]
 
 # ── 当前用户身份（支持 Bearer Header 或 HttpOnly Cookie） ──────────────────────
 
@@ -33,7 +57,7 @@ def _extract_user_id_from_token(token: str) -> int:
 
 async def get_current_user_id(
     authorization: Annotated[str | None, Header()] = None,
-    map_token: Annotated[str | None, Cookie()] = None,
+    map_token: Annotated[str | None, Cookie(alias="mapToken")] = None,
 ) -> int:
     """
     从请求头 Authorization: Bearer <token> 或 HttpOnly Cookie (mapToken) 中解析用户 ID。
@@ -69,7 +93,7 @@ CurrentUserID = Annotated[int, Depends(get_current_user_id)]
 
 async def get_portal_user_id(
     authorization: Annotated[str | None, Header()] = None,
-    map_token: Annotated[str | None, Cookie()] = None,
+    map_token: Annotated[str | None, Cookie(alias="mapToken")] = None,
 ) -> int:
     """
     门户 BFF 快照专用：优先解析 JWT（Header 或 Cookie）；在 DEBUG 且无合法 Token 时回退 user_id=1，

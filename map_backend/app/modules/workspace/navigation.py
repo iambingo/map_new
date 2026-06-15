@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 
@@ -171,7 +171,7 @@ def _days_since_published(resolution: dict[str, Any] | None) -> float | None:
         else:
             return None
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=UTC)
-        return (datetime.now(UTC) - dt).total_seconds() / 86400
+            dt = dt.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - dt).total_seconds() / 86400
     except (ValueError, TypeError):
         return None

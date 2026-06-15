@@ -12,6 +12,8 @@ modules/committee/router.py — 投委会决策模块 API 路由
   GET  /mixed/sessions                 混合投委会问卷提交列表
   GET  /mixed/sessions/history         混合投委会历史评分
   POST /mixed/remind                   发送催办通知
+  POST /meetings/vote-config           获取会议投票统计
+  POST /lighthouse/run                 调用 Lighthouse BL 模型
 """
 from fastapi import APIRouter, Query, Response, status
 
@@ -23,6 +25,7 @@ from app.modules.committee.schemas import (
     ChairResolutionResponse,
     CommitteePageContextResponse,
     CreateMeetingRequest,
+    LighthouseModelRequest,
     MeetingResponse,
     MixedSessionsHistoryResponse,
     MixedSessionsResponse,
@@ -30,6 +33,7 @@ from app.modules.committee.schemas import (
     RemindRequest,
     ResolutionResponse,
     SubmitVoteRequest,
+    VoteConfigRequest,
     VoteRecordResponse,
 )
 
@@ -215,3 +219,57 @@ async def send_remind(
     _user_id: PortalUserID,
 ) -> dict[str, str]:
     return await services.send_remind(db, body)
+
+
+# ── BL 模型相关接口 ──────────────────────────────────────────────────────────
+
+
+@router.post(
+    "/meetings/vote-config",
+    summary="获取会议投票统计",
+    description=(
+        "统计指定会议下所有投票记录的 section_a（资产评分），"
+        "按资产聚合各评分的票数。"
+    ),
+)
+async def get_meeting_vote_config(
+    body: VoteConfigRequest,
+    db: DBSession,
+    _user_id: PortalUserID,
+) -> dict[str, dict[str, int]]:
+    return await services.get_meeting_vote_config(db, body.meeting_id)
+
+
+@router.post(
+    "/lighthouse/run",
+    summary="调用 Lighthouse BL 模型",
+    description=(
+        "调用 Lighthouse 平台的 Black-Litterman 模型。\n\n"
+        "**模式 A（传 meeting_id）**：从数据库自动读取投票记录和会议日期。\n"
+        "**模式 B（不传 meeting_id）**：需手动传入 meeting_date 和 vote_config。"
+    ),
+)
+async def run_lighthouse_model(
+    body: LighthouseModelRequest,
+    db: DBSession = None,  # type: ignore
+    _user_id: PortalUserID = None,  # type: ignore
+) -> dict:
+    """
+    调用 Lighthouse BL 模型，返回 JSON：
+    {
+        "html_files": [
+            {"file_name": "summary_low.html", "content": "<base64>"},
+            {"file_name": "summary_medium.html", "content": "<base64>"},
+            {"file_name": "summary_fix.html", "content": "<base64>"}
+        ],
+        "weights": [{"asset": "...", "weight": "..."}, ...]
+    }
+    """
+    html_files, weights_data = await services.call_lighthouse_model(
+        db, body.meeting_id, body.meeting_date, body.vote_config
+    )
+
+    return {
+        "html_files": html_files,
+        "weights": weights_data,
+    }

@@ -2,7 +2,7 @@
 core/security.py — JWT 签发与校验工具
 ⚠️  禁止在此处编写用户管理等业务逻辑；仅封装令牌的生成/解析能力。
 """
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from jose import JWTError, jwt
@@ -39,7 +39,7 @@ def create_access_token(
     :param extra_claims: 追加写入 payload 的自定义字段（如 role、tenant_id）。
     :param expires_delta: 自定义过期时长；默认使用配置值。
     """
-    expire = datetime.now(UTC) + (
+    expire = datetime.now(timezone.utc) + (
         expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     payload: dict[str, Any] = {"sub": str(subject), "exp": expire}

@@ -17,7 +17,7 @@ modules/committee/mixed_services.py — 混合投委会问卷提交业务逻辑�
 """
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,7 +55,7 @@ def _resolve_session_code(requested: str | None) -> str:
     if requested and requested.strip():
         return requested.strip()
 
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     quarter = (now.month - 1) // 3 + 1
     return f"{now.year}Q{quarter}"
 
@@ -93,7 +93,7 @@ async def submit_mixed_viewpoint(
         已创建或已更新的 IcMixedQuestionnaireSubmission ORM 对象
     """
     session_code = _resolve_session_code(payload.session_code)
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
 
     # 幂等查询：是否已存在本人本会期的提交
     stmt = select(IcMixedQuestionnaireSubmission).where(

@@ -29,5 +29,5 @@ class MapUser(Base):
     display_name: Mapped[str | None] = mapped_column(String(128), nullable=True, comment="显示名称/姓名")
     email: Mapped[str | None] = mapped_column(String(256), nullable=True, comment="邮箱")
     department: Mapped[str | None] = mapped_column(String(256), nullable=True, comment="所属部门")
-    status: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=UserStatus.ACTIVE, server_default="1", comment="状态 1=正常 0=禁用")
+    status: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=1, server_default="1", comment="状态 1=正常 0=禁用")
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, comment="最近登录时间")

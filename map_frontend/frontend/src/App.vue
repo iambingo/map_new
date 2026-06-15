@@ -1,5 +1,7 @@
 <template>
-  <div class="flex h-screen w-full bg-[#161922] overflow-hidden font-sans text-[#E8ECF4]">
+  <!-- H5 无壳模式：直接渲染移动端组件 -->
+  <CommitteeVoteH5 v-if="isH5Mode" />
+  <div v-else class="flex h-screen w-full bg-[#161922] overflow-hidden font-sans text-[#E8ECF4]">
     <!-- Sidebar (hidden on portal page) -->
     <aside
       v-if="activeTab !== 'portal'"
@@ -21,10 +23,10 @@
       <div class="flex-1 overflow-y-auto py-2 px-1.5 no-scrollbar">
         <!-- First group label -->
         <p v-if="isSidebarOpen" class="text-[9px] font-mono text-[#555E75] uppercase tracking-widest px-2 mb-1 mt-0.5">工作室</p>
-        <template v-for="(item, idx) in navItems" :key="item.id">
+        <template v-for="(item, idx) in enabledNavItems" :key="item.id">
           <!-- Group divider -->
           <div
-            v-if="idx > 0 && item.group !== navItems[idx - 1].group"
+            v-if="idx > 0 && item.group !== enabledNavItems[idx - 1].group"
             :class="cn('my-1.5 flex items-center', isSidebarOpen ? 'px-2' : 'justify-center')"
           >
             <div class="flex-1 h-px bg-[#252A3A]"></div>
@@ -35,15 +37,16 @@
           </div>
           <!-- Nav button -->
           <button
-            @click="activeTab = item.id"
+            @click="safeNavigate(item.id)"
             :class="cn(
               'flex items-center w-full px-2.5 py-2 rounded text-xs font-medium transition-colors mb-px',
               activeTab === item.id
                 ? 'bg-[#3B9EFF]/12 text-[#3B9EFF] border border-[#3B9EFF]/25'
                 : 'text-[#8B93A8] hover:bg-[#2A2E3D] hover:text-[#E8ECF4] border border-transparent',
-              !isSidebarOpen && 'justify-center px-0'
+              !isSidebarOpen && 'justify-center px-0',
+              item.id === 'data-center' && 'opacity-50'
             )"
-            :title="!isSidebarOpen ? item.label : undefined"
+            :title="!isSidebarOpen ? (item.id === 'data-center' ? '开发中' : item.label) : (item.id === 'data-center' ? '开发中' : undefined)"
           >
             <component :is="item.icon" :class="cn('w-4 h-4 shrink-0', activeTab === item.id ? 'text-[#3B9EFF]' : 'text-[#555E75]')" />
             <span v-if="isSidebarOpen" class="ml-2.5 truncate tracking-wide">{{ item.label }}</span>
@@ -63,7 +66,7 @@
             v-for="(tab, idx) in openTabs"
             :key="tab.id"
             :class="cn('tab-trap group', idx === 0 ? 'tab-trap-first' : '', activeTab === tab.id ? 'tab-trap-active' : '')"
-            @click="activeTab = tab.id"
+            @click="safeNavigate(tab.id)"
           >
             <!-- Nav icon → ✖ on tab hover -->
             <span class="relative w-3.5 h-3.5 shrink-0">
@@ -85,13 +88,14 @@
             <Search class="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-[#555E75] pointer-events-none" />
             <input
               type="text"
-              placeholder="Search (Ctrl+K)"
-              class="h-6 w-36 pl-6 pr-2 text-[10px] bg-[#181C28] border border-[#2E3348] rounded text-[#E8ECF4] focus:outline-none focus:border-[#3B9EFF]/50 transition-all font-mono placeholder-[#555E75]"
+              disabled
+              placeholder="搜索 (即将推出)"
+              class="h-6 w-36 pl-6 pr-2 text-[10px] bg-[#181C28] border border-[#2E3348] rounded text-[#E8ECF4] focus:outline-none focus:border-[#3B9EFF]/50 transition-all font-mono placeholder-[#555E75] opacity-40 cursor-not-allowed"
             />
           </div>
 
           <!-- Notifications -->
-          <button class="p-1 text-[#8B93A8] hover:text-[#E8ECF4] rounded hover:bg-[#2A2E3D] transition-colors relative" title="消息提醒">
+          <button disabled class="p-1 text-[#8B93A8] hover:text-[#E8ECF4] rounded hover:bg-[#2A2E3D] transition-colors relative opacity-40 cursor-not-allowed" title="消息提醒 (即将推出)">
             <Bell class="w-3.5 h-3.5" />
             <span class="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-[#F04864] rounded-full"></span>
           </button>
@@ -119,18 +123,19 @@
             <!-- Scrollable Content Area -->
       <div class="flex-1 overflow-y-auto p-3">
         <div class="max-w-[1680px] mx-auto min-h-full">
-          <MapPortal v-if="activeTab === 'portal'" @navigate="activeTab = $event" />
-          <ExecutiveDashboard v-else-if="activeTab === 'executive'" />
-          <TerminalDashboard v-else-if="activeTab === 'terminal'" @navigate="activeTab = $event" />
-          <CommitteeView v-else-if="activeTab === 'committee'" />
-          <FiccCommitteeView v-else-if="activeTab === 'ficc-committee'" />
-          <DeptHeadView v-else-if="activeTab === 'dept-head'" />
-          <MarketView v-else-if="activeTab === 'market'" />
-          <ModelCenterView v-else-if="activeTab === 'model-center'" />
-          <SettingsView v-else-if="activeTab === 'settings'" />
-          <ViewpointWorkshop v-else-if="activeTab === 'viewpoint'" />
-          <FactorWorkshop v-else-if="activeTab === 'factor'" />
-          <BatchSimulator v-else-if="activeTab === 'batch-simulator'" @navigate="activeTab = $event" />
+          <MapPortal v-if="activeTab === 'portal' && isModuleEnabled('portal')" @navigate="safeNavigate($event)" />
+          <EsmModuleView v-else-if="activeTab === 'esm' && isModuleEnabled('esm')" />
+          <ExecutiveDashboard v-else-if="activeTab === 'executive' && isModuleEnabled('executive')" />
+          <TerminalDashboard v-else-if="activeTab === 'terminal' && isModuleEnabled('terminal')" @navigate="safeNavigate($event)" />
+          <CommitteeView v-else-if="activeTab === 'committee' && isModuleEnabled('committee')" />
+          <FiccCommitteeView v-else-if="activeTab === 'ficc-committee' && isModuleEnabled('ficc')" />
+          <DeptHeadView v-else-if="activeTab === 'dept-head' && isModuleEnabled('dept-head')" />
+          <MarketView v-else-if="activeTab === 'market' && isModuleEnabled('market')" />
+          <ModelCenterView v-else-if="activeTab === 'model-center' && isModuleEnabled('model-center')" />
+          <SettingsView v-else-if="activeTab === 'settings' && isModuleEnabled('settings')" />
+          <ViewpointWorkshop v-else-if="activeTab === 'viewpoint' && isModuleEnabled('viewpoint')" />
+          <FactorWorkshop v-else-if="activeTab === 'factor' && isModuleEnabled('factor')" />
+          <BatchSimulator v-else-if="activeTab === 'batch-simulator' && isModuleEnabled('batch-simulator')" @navigate="safeNavigate($event)" />
           <div v-else class="flex h-full items-center justify-center text-[#555E75]">模块开发中...</div>
         </div>
       </div>
@@ -166,10 +171,10 @@
               <option v-for="role in ROLES" :key="role" :value="role">{{ role }}</option>
             </select>
           </div>
-          <button class="w-full text-left px-3 py-1.5 text-xs text-[#8B93A8] hover:bg-[#2A2E3D] hover:text-[#E8ECF4] transition-colors">个人设置</button>
-          <button class="w-full text-left px-3 py-1.5 text-xs text-[#8B93A8] hover:bg-[#2A2E3D] hover:text-[#E8ECF4] transition-colors">操作日志</button>
+          <button disabled class="w-full text-left px-3 py-1.5 text-xs text-[#8B93A8] hover:bg-[#2A2E3D] hover:text-[#E8ECF4] transition-colors opacity-40 cursor-not-allowed" title="即将推出">个人设置</button>
+          <button disabled class="w-full text-left px-3 py-1.5 text-xs text-[#8B93A8] hover:bg-[#2A2E3D] hover:text-[#E8ECF4] transition-colors opacity-40 cursor-not-allowed" title="即将推出">操作日志</button>
           <div class="border-t border-[#2E3348] mt-1 pt-1">
-            <button class="w-full text-left px-3 py-1.5 text-xs text-[#F04864] hover:bg-[#2A2E3D] transition-colors">退出登录</button>
+            <button disabled class="w-full text-left px-3 py-1.5 text-xs text-[#F04864] hover:bg-[#2A2E3D] transition-colors opacity-40 cursor-not-allowed" title="演示环境暂不支持">退出登录</button>
           </div>
         </div>
       </Transition>
@@ -178,7 +183,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue';
+import { computed, defineAsyncComponent, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import {
   DataBoard, DataLine, Setting, Search, Bell, User, Expand,
   Monitor, UserFilled, OfficeBuilding, Cpu, DataAnalysis, TrendCharts,
@@ -188,54 +194,82 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { sharedIntentState } from './store/intentStore';
 import { activeRole, ROLES } from './store/demoStore';
+import { isModuleEnabled } from './utils/featureFlags';
 
-import MapPortal from './components/MapPortal.vue';
-import ExecutiveDashboard from './components/ExecutiveDashboard.vue';
-import TerminalDashboard from './components/TerminalDashboard.vue';
-import CommitteeView from './components/CommitteeView.vue';
-import FiccCommitteeView from './components/FiccCommitteeView.vue';
-import DeptHeadView from './components/DeptHeadView.vue';
-import MarketView from './components/MarketView.vue';
-import ModelCenterView from './components/ModelCenterView.vue';
-import SettingsView from './components/SettingsView.vue';
-import ViewpointWorkshop from './components/ViewpointWorkshop.vue';
-import FactorWorkshop from './components/FactorWorkshop.vue';
-import BatchSimulator from './components/BatchSimulator.vue';
+const MapPortal = defineAsyncComponent(() => import('./components/MapPortal.vue'));
+const EsmModuleView = defineAsyncComponent(() => import('./components/EsmModuleView.vue'));
+const ExecutiveDashboard = defineAsyncComponent(() => import('./components/ExecutiveDashboard.vue'));
+const TerminalDashboard = defineAsyncComponent(() => import('./components/TerminalDashboard.vue'));
+const CommitteeView = defineAsyncComponent(() => import('./components/CommitteeView.vue'));
+const CommitteeVoteH5 = defineAsyncComponent(() => import('./components/CommitteeVoteH5.vue'));
+const FiccCommitteeView = defineAsyncComponent(() => import('./components/FiccCommitteeView.vue'));
+const DeptHeadView = defineAsyncComponent(() => import('./components/DeptHeadView.vue'));
+const MarketView = defineAsyncComponent(() => import('./components/MarketView.vue'));
+const ModelCenterView = defineAsyncComponent(() => import('./components/ModelCenterView.vue'));
+const SettingsView = defineAsyncComponent(() => import('./components/SettingsView.vue'));
+const ViewpointWorkshop = defineAsyncComponent(() => import('./components/ViewpointWorkshop.vue'));
+const FactorWorkshop = defineAsyncComponent(() => import('./components/FactorWorkshop.vue'));
+const BatchSimulator = defineAsyncComponent(() => import('./components/BatchSimulator.vue'));
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+const route = useRoute();
+const router = useRouter();
+
 const navItems = [
-  { id: 'portal',       label: 'MAP门户',   icon: DataBoard,    group: 'labs'  },
-  { id: 'viewpoint',    label: '观点车间',   icon: ChatDotRound, group: 'labs'  },
-  { id: 'factor',       label: '因子车间',   icon: Histogram,    group: 'labs'  },
-  { id: 'executive',    label: '总裁驾驶舱', icon: TrendCharts,  group: 'ops'   },
-  { id: 'terminal',     label: '资配工作台', icon: Monitor,      group: 'ops'   },
-  { id: 'committee',    label: '投委会决策', icon: UserFilled,   group: 'ops'   },
-  { id: 'ficc-committee', label: 'FICC 委员会', icon: Histogram,  group: 'ops'   },
-  { id: 'dept-head',    label: '部门决策',   icon: OfficeBuilding,group: 'ops'  },
-  { id: 'batch-simulator', label: '调仓沙盘', icon: Operation,  group: 'ops'   },
-  { id: 'market',       label: '市场洞察',   icon: DataLine,     group: 'ops'   },
-  { id: 'model-center', label: '模型中心',   icon: Cpu,          group: 'ops'   },
-  { id: 'data-center',  label: '数据中心',   icon: DataAnalysis, group: 'sys'   },
-  { id: 'settings',     label: '系统设置',   icon: Setting,      group: 'sys'   },
+  { id: 'portal',          label: 'MAP门户',     icon: DataBoard,      group: 'labs', moduleKey: 'portal'         },
+  { id: 'esm',             label: '外部策略管理', icon: DataAnalysis,   group: 'labs', moduleKey: 'esm'            },
+  { id: 'viewpoint',       label: '观点车间',     icon: ChatDotRound,   group: 'labs', moduleKey: 'viewpoint'      },
+  { id: 'factor',          label: '因子车间',     icon: Histogram,      group: 'labs', moduleKey: 'factor'         },
+  { id: 'executive',       label: '总裁驾驶舱',   icon: TrendCharts,    group: 'ops',  moduleKey: 'executive'      },
+  { id: 'terminal',        label: '资配工作台',   icon: Monitor,        group: 'ops',  moduleKey: 'terminal'       },
+  { id: 'committee',       label: '投委会决策',   icon: UserFilled,     group: 'ops',  moduleKey: 'committee'      },
+  { id: 'ficc-committee',  label: 'FICC 委员会',  icon: Histogram,      group: 'ops',  moduleKey: 'ficc'           },
+  { id: 'dept-head',       label: '部门决策',     icon: OfficeBuilding, group: 'ops',  moduleKey: 'dept-head'      },
+  { id: 'batch-simulator', label: '调仓沙盘',     icon: Operation,      group: 'ops',  moduleKey: 'batch-simulator' },
+  { id: 'market',          label: '市场洞察',     icon: DataLine,       group: 'ops',  moduleKey: 'market'         },
+  { id: 'model-center',    label: '模型中心',     icon: Cpu,            group: 'ops',  moduleKey: 'model-center'   },
+  { id: 'data-center',     label: '数据中心',     icon: DataAnalysis,   group: 'sys',  moduleKey: 'data-center'    },
+  { id: 'settings',        label: '系统设置',     icon: Setting,        group: 'sys',  moduleKey: 'settings'       },
 ];
+
+const enabledNavItems = computed(() => navItems.filter((item) => isModuleEnabled(item.moduleKey)));
 
 const TAB_STORAGE_KEY = 'map_active_tab';
 
 function readPersistedTab(): string {
+  if (window.location.pathname.startsWith('/esm') || window.location.hash.startsWith('#/esm')) return 'esm';
   try {
     const raw = sessionStorage.getItem(TAB_STORAGE_KEY);
-    if (raw && navItems.some((n) => n.id === raw)) return raw;
+    if (raw && enabledNavItems.value.some((n) => n.id === raw)) return raw;
   } catch {
     /* 隐私模式等 */
   }
-  return 'portal';
+  // fallback 到第一个启用模块
+  return enabledNavItems.value[0]?.id ?? 'portal';
+}
+
+/** 导航守卫：仅允许跳转到已启用的模块 */
+function safeNavigate(tabId: string) {
+  const item = enabledNavItems.value.find((n) => n.id === tabId);
+  if (item) {
+    activeTab.value = tabId;
+    if (tabId === 'esm' && !route.path.startsWith('/esm')) {
+      router.push('/esm/dashboard');
+    } else if (tabId !== 'esm' && route.path.startsWith('/esm')) {
+      router.replace('/');
+    }
+  } else {
+    // 重定向到第一个可用模块
+    activeTab.value = enabledNavItems.value[0]?.id ?? 'portal';
+  }
 }
 
 const initialActiveTab = readPersistedTab();
 const activeTab = ref(initialActiveTab);
+const isH5Mode = new URLSearchParams(window.location.search).get('h5') === 'committee-vote';
 const isSidebarOpen = ref(false);
 const showUserMenu = ref(false);
 
@@ -263,10 +297,16 @@ function toggleFullscreen() {
 
 watch(() => sharedIntentState.navigationTarget, (target) => {
   if (target) {
-    activeTab.value = target;
+    safeNavigate(target);
     sharedIntentState.navigationTarget = null;
   }
 });
+
+watch(() => route.path, (path) => {
+  if (path.startsWith('/esm') && activeTab.value !== 'esm') {
+    activeTab.value = 'esm';
+  }
+}, { immediate: true });
 
 const openTabIds = ref<string[]>(
   initialActiveTab === 'portal' ? ['portal'] : ['portal', initialActiveTab].filter((v, i, a) => a.indexOf(v) === i),
@@ -278,6 +318,11 @@ watch(activeTab, (newTab) => {
   } catch {
     /* ignore */
   }
+  if (newTab === 'esm' && !route.path.startsWith('/esm')) {
+    router.push('/esm/dashboard');
+  } else if (newTab !== 'esm' && route.path.startsWith('/esm')) {
+    router.replace('/');
+  }
   if (!openTabIds.value.includes(newTab)) {
     openTabIds.value.push(newTab);
   }
@@ -286,7 +331,7 @@ watch(activeTab, (newTab) => {
 const openTabs = computed(() => {
   return openTabIds.value
     .map(id => navItems.find(n => n.id === id))
-    .filter(Boolean) as typeof navItems;
+    .filter((n): n is typeof navItems[number] => !!n && isModuleEnabled(n.moduleKey));
 });
 
 function closeTab(tabId: string) {
@@ -294,8 +339,12 @@ function closeTab(tabId: string) {
   if (idx === -1) return;
   openTabIds.value.splice(idx, 1);
   if (activeTab.value === tabId) {
-    const fallback = openTabIds.value[openTabIds.value.length - 1] || 'portal';
-    activeTab.value = fallback;
+    // 从剩余 tab 中找一个已启用的，否则 fallback 到第一个启用模块
+    const remaining = openTabIds.value.find((id) => {
+      const n = navItems.find((item) => item.id === id);
+      return n && isModuleEnabled(n.moduleKey);
+    });
+    activeTab.value = remaining ?? enabledNavItems.value[0]?.id ?? 'portal';
   }
 }
 </script>

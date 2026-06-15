@@ -1,16 +1,16 @@
 {
   "APP_ENV": "development",
   "DEBUG": true,
-  "MAP_USE_SQLITE": false,
+  "MAP_USE_SQLITE": true,
   "MAP_SQLITE_PATH": "./map_local.sqlite",
   "SECRET_KEY": "dev-secret-key-change-in-production",
   "ACCESS_TOKEN_EXPIRE_MINUTES": 480,
 
-  "DB_HOST": "127.0.0.1",
-  "DB_PORT": 5400,
-  "DB_USER": "mapuser",
-  "DB_PASSWORD": "mappass",
-  "DB_NAME": "mapdb",
+  "DB_HOST": "t0pawmmapdata-my.db.qa.pab.com.cn",
+  "DB_PORT": 3306,
+  "DB_USER": "deployop",
+  "DB_PASSWORD": "j3eKJSbX29e3",
+  "DB_NAME": "pawmmapdata",
   "DB_CHARSET": "utf8mb4",
 
   "REDIS_HOST": "127.0.0.1",
@@ -23,7 +23,8 @@
   "ROCKETMQ_CONSUMER_GROUP": "MAP_CONSUMER_GROUP",
   "ROCKETMQ_TOPIC": "MAP_EVENTS",
 
-  "SSO_VALIDATE_URL": "http://pawm-pfp-service.gateway.dev.pab.com.cn/wmuc/loginServer/loginValidateToken",
+  "SSO_LOGIN_URL": "http://wm.stg.paic.com.cn/lckj/pawm-uc/account_login.html",
+  "SSO_VALIDATE_URL": "http://pawm-pfp-83022-gateway.fat001.qa.pab.com.cn/wmuc/loginServer/loginValidateToken",
   "SSO_LOGIN_REDIRECT_URL": "http://localhost:5173",
 
   "CORS_ORIGINS": "*",

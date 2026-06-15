@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BL 报告 — 20250507</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100%;overflow:auto}
+body{
+  font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  background:#1e2535;
+  color:#d4d8e2;
+  font-size:13px;
+  line-height:1.5;
+}
+
+/* ── 顶部 header（固定高度）── */
+.hdr{
+  background:linear-gradient(135deg,#0f1c3f 0%,#1a3a6e 60%,#1e4d8c 100%);
+  color:white;
+  padding:12px 20px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  flex-shrink:0;
+  gap:16px;
+}
+.hdr h1{font-size:16px;font-weight:700;letter-spacing:0.3px;white-space:nowrap}
+.hdr .sub{font-size:11px;opacity:0.6;margin-top:1px}
+.meta-pills{display:flex;gap:8px;flex-shrink:0}
+.pill{
+  background:rgba(255,255,255,0.12);
+  border:1px solid rgba(255,255,255,0.18);
+  border-radius:6px;
+  padding:4px 10px;
+  font-size:11px;
+  white-space:nowrap;
+}
+.pill b{font-size:13px;display:block;font-weight:700}
+.kpi-bar{display:flex;gap:10px;flex-shrink:0}
+.kpi{
+  border-radius:8px;
+  padding:8px 18px;
+  text-align:center;
+  white-space:nowrap;
+  min-width:90px;
+}
+.kpi-ret{background:rgba(220,38,38,0.18);border:1px solid rgba(220,38,38,0.45);border-bottom:3px solid #dc2626}
+.kpi-vol{background:rgba(99,130,230,0.18);border:1px solid rgba(99,130,230,0.45);border-bottom:3px solid #6382e6}
+.kpi-sharpe{background:rgba(52,199,150,0.18);border:1px solid rgba(52,199,150,0.45);border-bottom:3px solid #34c796}
+.kpi .kv{font-size:22px;font-weight:800;letter-spacing:0.5px}
+.kpi-ret .kv{color:#f87171}
+.kpi-vol .kv{color:#93aaf5}
+.kpi-sharpe .kv{color:#34c796}
+.kpi .kl{font-size:10px;opacity:0.7;margin-top:3px;letter-spacing:0.3px}
+
+/* ── 主体：tab导航 + 两栏 ── */
+.body-wrap{
+  display:flex;
+  flex-direction:column;
+  padding:0;
+}
+
+/* Tab 导航 */
+.tabs{
+  display:flex;
+  background:#141c2e;
+  padding:6px 16px 0;
+  gap:2px;
+  flex-shrink:0;
+}
+.tab{
+  padding:6px 16px;
+  font-size:12px;
+  font-weight:600;
+  color:#7a8aa8;
+  cursor:pointer;
+  border-radius:6px 6px 0 0;
+  background:#1a2540;
+  border:none;
+  transition:all 0.15s;
+  white-space:nowrap;
+}
+.tab.active{
+  background:#1e2d4a;
+  color:#93c5fd;
+}
+.tab:hover:not(.active){background:#1f2e4d;color:#a8bcd8}
+
+/* Tab 内容区 */
+.tab-content{
+  display:none;
+}
+.tab-content.active{display:block}
+
+/* ── 两栏布局 ── */
+.two-col{
+  display:grid;
+  grid-template-columns:1fr 1px 1fr;
+  align-items:stretch;
+  gap:0 10px;
+  padding:10px 16px;
+}
+.col-divider{background:#253552;margin:10px 0}
+.col{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  padding-right:4px;
+}
+.col>.card{flex:1}
+
+/* ── 卡片 ── */
+.card{
+  background:#1e2d4a;
+  border-radius:8px;
+  padding:12px 16px;
+  box-shadow:0 2px 8px rgba(0,0,0,0.3);
+  flex-shrink:0;
+  border:1px solid #253552;
+  box-sizing:border-box;
+}
+.card.grow{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.sec-title{
+  font-size:11px;
+  font-weight:700;
+  color:#93c5fd;
+  text-transform:uppercase;
+  letter-spacing:0.8px;
+  margin-bottom:8px;
+  padding-bottom:6px;
+  border-bottom:1.5px solid #2d3f5e;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  flex-shrink:0;
+}
+.sec-title .num{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:18px;height:18px;
+  background:#1d4ed8;
+  color:white;
+  border-radius:50%;
+  font-size:10px;
+  font-weight:700;
+  flex-shrink:0;
+}
+.desc{color:#8aa0be;font-size:11px;margin-bottom:8px;line-height:1.5}
+
+/* ── 表格 ── */
+.tbl-wrap{overflow-y:auto}
+.tbl-wrap::-webkit-scrollbar{width:3px}
+.tbl-wrap::-webkit-scrollbar-thumb{background:#2d3f5e;border-radius:2px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead th{
+  background:#162236;
+  color:#7a8aa8;
+  font-weight:600;
+  padding:4px 8px;
+  text-align:left;
+  border-bottom:1px solid #253552;
+  white-space:nowrap;
+  font-size:11px;
+  position:sticky;top:0;z-index:1;
+}
+tbody td{padding:3px 8px;border-bottom:1px solid #1a2a42;vertical-align:middle;color:#c8d4e6;font-size:12px;height:36px;box-sizing:border-box}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover td{background:#162236}
+.an{font-weight:500;color:#d4e0f0;white-space:nowrap}
+.tiny{font-size:10px;color:#5a7090}
+
+/* ── Badge ── */
+.bd{display:inline-block;padding:1px 7px;border-radius:20px;font-size:11px;font-weight:600}
+.bu{background:rgba(224,82,82,0.15);color:#e05252}
+.bd2{background:rgba(61,186,126,0.15);color:#3dba7e}
+.bn{background:rgba(122,140,170,0.15);color:#7a8caa}
+
+/* ── 指标卡组 ── */
+.kpi-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px;flex-shrink:0}
+.metric{background:#162236;border-radius:6px;padding:10px 12px;border-left:3px solid #1d4ed8}
+.metric .ml{font-size:11px;color:#7a8aa8;margin-bottom:3px}
+.metric .mv{font-size:20px;font-weight:700;color:#e2eaf8}
+.metric .mu{font-size:12px;font-weight:400;color:#7a8aa8}
+
+/* ── 单栏布局（模型说明页）── */
+.one-col{
+  padding:10px 16px;
+  flex:1;
+  overflow-y:auto;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+.one-col::-webkit-scrollbar{width:4px}
+.one-col::-webkit-scrollbar-thumb{background:#2d3f5e;border-radius:2px}
+.steps-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+.step{background:#162236;border-radius:6px;padding:10px 12px;border-top:2px solid #1d4ed8}
+.step .sn{font-size:10px;color:#93c5fd;font-weight:700;text-transform:uppercase;margin-bottom:2px}
+.step .st{font-size:12px;font-weight:600;color:#d4e0f0;margin-bottom:2px}
+.step .sd{font-size:11px;color:#7a8aa8;line-height:1.4}
+.design-tbl th{background:#162236}
+.ref-list{list-style:none;padding:0}
+.ref-list li{padding:6px 0;border-bottom:1px solid #1a2a42;font-size:12px;color:#a8bcd8;display:flex;gap:8px;line-height:1.5}
+.ref-list li:last-child{border-bottom:none}
+.rn{min-width:18px;height:18px;background:#1e3a6e;color:#93c5fd;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;margin-top:2px}
+em{color:#93c5fd;font-style:italic}
+.note{font-size:10.5px;color:#5a7090;margin-top:6px;padding-top:6px;border-top:1px dashed #253552;flex-shrink:0}
+.sum-banner{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.sum-tag{display:inline-flex;align-items:center;gap:6px;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:700;letter-spacing:0.3px}
+.sum-tag-bull{background:rgba(224,82,82,0.15);border:1px solid rgba(224,82,82,0.5);color:#e05252}
+.sum-tag-bear{background:rgba(61,186,126,0.15);border:1px solid rgba(61,186,126,0.5);color:#3dba7e}
+.sum-tag-neu{background:rgba(122,140,170,0.15);border:1px solid rgba(122,140,170,0.4);color:#7a8caa}
+.sum-divider{width:1px;background:#1e3254;margin:0 4px;flex-shrink:0}
+.sum-move{margin-top:10px;padding:10px 14px;background:#111e35;border-radius:8px;border-left:3px solid #3b82f6;font-size:12.5px;color:#a8bcd8;line-height:1.8}
+.sum-move strong{color:#93c5fd}
+.sum-label{font-size:10px;color:#5a7090;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px}
+.chart-wrap{flex-shrink:0}
+</style>
+</head>
+<body>
+
+<!-- ══ 顶部 Header ══ -->
+<div class="hdr">
+  <div>
+    <h1>Black-Litterman 资产配置模型报告</h1>
+    <div class="sub">Investment Committee · Quantitative Asset Allocation · Auto-generated</div>
+  </div>
+  <div class="meta-pills">
+    <div class="pill"><b>20250507</b>会议日期</div>
+    <div class="pill"><b>20220507</b>数据起始</div>
+    <div class="pill"><b>20250507</b>数据截止</div>
+    <div class="pill"><b>10 个</b>参与资产</div>
+  </div>
+</div>
+
+<!-- ══ Tab 导航 ══ -->
+<div class="body-wrap">
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab(0)">📊 本期配置结果</button>
+    <button class="tab" onclick="switchTab(1)">📖 模型说明</button>
+    <button class="tab" onclick="switchTab(2)">📈 收益融合过程</button>
+    <button class="tab" onclick="switchTab(3)">🔒 约束说明</button>
+  </div>
+
+  <!-- ══ Tab 0：配置结果（两栏：投委会观点 | 权重对比）══ -->
+  <div class="tab-content active">
+    <!-- 配置结论摘要 -->
+    <div style="padding:8px 16px 0 16px;flex-shrink:0">
+      <div style="background:linear-gradient(135deg,#0d1e3d 0%,#111e38 60%,#0a1729 100%);border:1px solid #1e3254;border-radius:10px;padding:10px 16px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+          <span style="font-size:16px">🎯</span>
+          <span style="font-size:13px;font-weight:700;color:#93c5fd;text-transform:uppercase;letter-spacing:1.5px">本期配置结论摘要</span>
+          <span style="flex:1;height:1px;background:linear-gradient(90deg,#1e3254,transparent)"></span>
+        </div>
+        <div>
+  <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px">
+    <div class="sum-label">本期配置动作</div>
+    <div style="font-size:10px;color:#4a607c">（相对均衡权重变动 ≥50% 触发）</div>
+  </div>
+  <div style="margin-bottom:14px"><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><div onclick="highlightRow('wrow-固收_利率30Y')" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;background:rgba(224,82,82,0.12);border:1px solid rgba(224,82,82,0.5);border-radius:8px;padding:6px 12px;box-shadow:0 0 8px rgba(224,82,82,0.15);transition:opacity .15s" onmouseover="this.style.opacity=.75" onmouseout="this.style.opacity=1"><span style="font-size:15px;font-weight:800;color:#e05252">▲</span><span style="font-size:12px;font-weight:700;color:#e05252">增配</span><span style="width:1px;height:14px;background:rgba(224,82,82,0.5);margin:0 2px"></span><span style="font-size:12px;color:#c8d8f0">固收-利率30Y</span></div><div onclick="highlightRow('wrow-含权_转债')" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;background:rgba(224,82,82,0.12);border:1px solid rgba(224,82,82,0.5);border-radius:8px;padding:6px 12px;box-shadow:0 0 8px rgba(224,82,82,0.15);transition:opacity .15s" onmouseover="this.style.opacity=.75" onmouseout="this.style.opacity=1"><span style="font-size:15px;font-weight:800;color:#e05252">▲</span><span style="font-size:12px;font-weight:700;color:#e05252">增配</span><span style="width:1px;height:14px;background:rgba(224,82,82,0.5);margin:0 2px"></span><span style="font-size:12px;color:#c8d8f0">含权-转债</span></div><div onclick="highlightRow('wrow-含权_二级债基')" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;background:rgba(224,82,82,0.12);border:1px solid rgba(224,82,82,0.5);border-radius:8px;padding:6px 12px;box-shadow:0 0 8px rgba(224,82,82,0.15);transition:opacity .15s" onmouseover="this.style.opacity=.75" onmouseout="this.style.opacity=1"><span style="font-size:15px;font-weight:800;color:#e05252">▲</span><span style="font-size:12px;font-weight:700;color:#e05252">增配</span><span style="width:1px;height:14px;background:rgba(224,82,82,0.5);margin:0 2px"></span><span style="font-size:12px;color:#c8d8f0">含权-二级债基</span></div><div onclick="highlightRow('wrow-含权_红利')" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;background:rgba(224,82,82,0.12);border:1px solid rgba(224,82,82,0.5);border-radius:8px;padding:6px 12px;box-shadow:0 0 8px rgba(224,82,82,0.15);transition:opacity .15s" onmouseover="this.style.opacity=.75" onmouseout="this.style.opacity=1"><span style="font-size:15px;font-weight:800;color:#e05252">▲</span><span style="font-size:12px;font-weight:700;color:#e05252">增配</span><span style="width:1px;height:14px;background:rgba(224,82,82,0.5);margin:0 2px"></span><span style="font-size:12px;color:#c8d8f0">含权-红利</span></div><div onclick="highlightRow('wrow-含权_偏股混')" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;background:rgba(224,82,82,0.12);border:1px solid rgba(224,82,82,0.5);border-radius:8px;padding:6px 12px;box-shadow:0 0 8px rgba(224,82,82,0.15);transition:opacity .15s" onmouseover="this.style.opacity=.75" onmouseout="this.style.opacity=1"><span style="font-size:15px;font-weight:800;color:#e05252">▲</span><span style="font-size:12px;font-weight:700;color:#e05252">增配</span><span style="width:1px;height:14px;background:rgba(224,82,82,0.5);margin:0 2px"></span><span style="font-size:12px;color:#c8d8f0">含权-偏股混</span></div><div onclick="highlightRow('wrow-另类_黄金')" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;background:rgba(224,82,82,0.12);border:1px solid rgba(224,82,82,0.5);border-radius:8px;padding:6px 12px;box-shadow:0 0 8px rgba(224,82,82,0.15);transition:opacity .15s" onmouseover="this.style.opacity=.75" onmouseout="this.style.opacity=1"><span style="font-size:15px;font-weight:800;color:#e05252">▲</span><span style="font-size:12px;font-weight:700;color:#e05252">增配</span><span style="width:1px;height:14px;background:rgba(224,82,82,0.5);margin:0 2px"></span><span style="font-size:12px;color:#c8d8f0">另类-黄金</span></div><div onclick="highlightRow('wrow-固收_存单')" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;background:rgba(61,186,126,0.12);border:1px solid rgba(61,186,126,0.5);border-radius:8px;padding:6px 12px;box-shadow:0 0 8px rgba(61,186,126,0.15);transition:opacity .15s" onmouseover="this.style.opacity=.75" onmouseout="this.style.opacity=1"><span style="font-size:15px;font-weight:800;color:#3dba7e">▼</span><span style="font-size:12px;font-weight:700;color:#3dba7e">减配</span><span style="width:1px;height:14px;background:rgba(61,186,126,0.5);margin:0 2px"></span><span style="font-size:12px;color:#c8d8f0">固收-存单</span></div></div></div>
+  <div style="height:1px;background:linear-gradient(90deg,#1e3254 60%,transparent);margin-bottom:10px"></div>
+  <div class="sum-label" style="margin-bottom:6px">本期观点方向</div>
+  <div class="sum-banner" style="margin-bottom:0;display:flex;flex-wrap:nowrap;gap:6px;overflow-x:auto"><span class="sum-tag sum-tag-bull" style="white-space:nowrap;font-size:12px">🔺 看多 &nbsp;另类-黄金</span>&nbsp;&nbsp;<span class="sum-tag sum-tag-neu" style="white-space:nowrap;font-size:12px">— 中性 &nbsp;固收-信用&nbsp;·&nbsp;固收-利率10Y&nbsp;·&nbsp;固收-利率30Y&nbsp;·&nbsp;含权-转债&nbsp;·&nbsp;含权-二级债基&nbsp;·&nbsp;含权-红利&nbsp;·&nbsp;含权-偏股混&nbsp;·&nbsp;含权-恒生科技</span>&nbsp;&nbsp;<span class="sum-tag sum-tag-bear" style="white-space:nowrap;font-size:12px">🔻 审慎 &nbsp;固收-存单</span></div>
+</div>
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid #1e3254;display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+          <div style="background:linear-gradient(135deg,#12203f,#0e1b35);border:1px solid rgba(248,113,113,0.35);border-radius:10px;padding:14px 18px;box-shadow:0 2px 12px rgba(248,113,113,0.08),inset 0 1px 0 rgba(248,113,113,0.12)">
+            <div style="font-size:10px;font-weight:600;color:#7a8aa8;margin-bottom:8px;letter-spacing:1px;text-transform:uppercase">预期年化收益</div>
+            <div style="font-size:28px;font-weight:800;color:#f87171;letter-spacing:0.5px;line-height:1">2.47%</div>
+            <div style="margin-top:8px;height:2px;background:linear-gradient(90deg,rgba(248,113,113,0.6),transparent);border-radius:1px"></div>
+          </div>
+          <div style="background:linear-gradient(135deg,#12203f,#0e1b35);border:1px solid rgba(147,170,245,0.35);border-radius:10px;padding:14px 18px;box-shadow:0 2px 12px rgba(147,170,245,0.08),inset 0 1px 0 rgba(147,170,245,0.12)">
+            <div style="font-size:10px;font-weight:600;color:#7a8aa8;margin-bottom:8px;letter-spacing:1px;text-transform:uppercase">预期年化波动</div>
+            <div style="font-size:28px;font-weight:800;color:#93aaf5;letter-spacing:0.5px;line-height:1">1.99%</div>
+            <div style="margin-top:8px;height:2px;background:linear-gradient(90deg,rgba(147,170,245,0.6),transparent);border-radius:1px"></div>
+          </div>
+          <div style="background:linear-gradient(135deg,#12203f,#0e1b35);border:1px solid rgba(248,180,60,0.35);border-radius:10px;padding:14px 18px;box-shadow:0 2px 12px rgba(248,180,60,0.08),inset 0 1px 0 rgba(248,180,60,0.12)">
+            <div style="font-size:10px;font-weight:600;color:#7a8aa8;margin-bottom:8px;letter-spacing:1px;text-transform:uppercase">夏普比率</div>
+            <div style="font-size:28px;font-weight:800;color:#f8b43c;letter-spacing:0.5px;line-height:1">0.34</div>
+            <div style="margin-top:8px;height:2px;background:linear-gradient(90deg,rgba(248,180,60,0.6),transparent);border-radius:1px"></div>
+          </div>
+          <div style="background:linear-gradient(135deg,#12203f,#0e1b35);border:1px solid rgba(52,199,150,0.35);border-radius:10px;padding:14px 18px;box-shadow:0 2px 12px rgba(52,199,150,0.08),inset 0 1px 0 rgba(52,199,150,0.12)">
+            <div style="font-size:10px;font-weight:600;color:#7a8aa8;margin-bottom:8px;letter-spacing:1px;text-transform:uppercase">历史最大回撤</div>
+            <div style="font-size:28px;font-weight:800;color:#34c796;letter-spacing:0.5px;line-height:1">-1.44%</div>
+            <div style="margin-top:8px;height:2px;background:linear-gradient(90deg,rgba(52,199,150,0.6),transparent);border-radius:1px"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="two-col">
+      <!-- 左栏：投委会观点 -->
+      <div class="col">
+        <div class="card">
+          <div style="padding:4px 0 8px">
+            <div style="font-size:11px;font-weight:700;color:#7a8aa8;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">本期投委会观点汇总</div>
+            <table>
+              <thead>
+                <tr>
+                  <th>资产</th>
+                  <th style="min-width:120px">投票分布</th>
+                  <th>加权得分</th>
+                  <th>观点方向</th>
+                  <th>量化观点Q</th>
+                </tr>
+              </thead>
+              <tbody><tr>
+          <td class="an">固收-存单</td>
+          <td><div title="谨慎(2分): 8票 | 乐观(4分): 1票" style="display:flex;width:140px;border-radius:2px;overflow:hidden;cursor:default"><span style="display:inline-block;width:89%;height:10px;background:#86efac;"></span><span style="display:inline-block;width:11%;height:10px;background:#fca5a5;"></span></div><span class="tiny">2×8 4×1</span></td>
+          <td style="font-weight:600">2.22</td>
+          <td><span class="bd bd2">▼ 看空</span></td>
+          <td style="font-weight:600;color:#3dba7e">-0.078%</td>
+        </tr><tr>
+          <td class="an">固收-信用</td>
+          <td><div title="中性(3分): 6票 | 乐观(4分): 3票" style="display:flex;width:140px;border-radius:2px;overflow:hidden;cursor:default"><span style="display:inline-block;width:67%;height:10px;background:#d1d5db;"></span><span style="display:inline-block;width:33%;height:10px;background:#fca5a5;"></span></div><span class="tiny">3×6 4×3</span></td>
+          <td style="font-weight:600">3.33</td>
+          <td><span class="bd bn">— 中性</span></td>
+          <td style="font-weight:600;color:#7a8caa">+0.115%</td>
+        </tr><tr>
+          <td class="an">固收-利率10Y</td>
+          <td><div title="中性(3分): 8票 | 乐观(4分): 1票" style="display:flex;width:140px;border-radius:2px;overflow:hidden;cursor:default"><span style="display:inline-block;width:89%;height:10px;background:#d1d5db;"></span><span style="display:inline-block;width:11%;height:10px;background:#fca5a5;"></span></div><span class="tiny">3×8 4×1</span></td>
+          <td style="font-weight:600">3.11</td>
+          <td><span class="bd bn">— 中性</span></td>
+          <td style="font-weight:600;color:#7a8caa">+0.097%</td>
+        </tr><tr>
+          <td class="an">固收-利率30Y</td>
+          <td><div title="中性(3分): 7票 | 乐观(4分): 2票 | 强烈乐观(5分): 1票" style="display:flex;width:140px;border-radius:2px;overflow:hidden;cursor:default"><span style="display:inline-block;width:70%;height:10px;background:#d1d5db;"></span><span style="display:inline-block;width:20%;height:10px;background:#fca5a5;"></span><span style="display:inline-block;width:10%;height:10px;background:#dc2626;"></span></div><span class="tiny">3×7 4×2 5×1</span></td>
+          <td style="font-weight:600">3.40</td>
+          <td><span class="bd bn">— 中性</span></td>
+          <td style="font-weight:600;color:#7a8caa">+0.757%</td>
+        </tr><tr>
+          <td class="an">含权-转债</td>
+          <td><div title="谨慎(2分): 1票 | 中性(3分): 5票 | 乐观(4分): 3票" style="display:flex;width:140px;border-radius:2px;overflow:hidden;cursor:default"><span style="display:inline-block;width:11%;height:10px;background:#86efac;"></span><span style="display:inline-block;width:56%;height:10px;background:#d1d5db;"></span><span style="display:inline-block;width:33%;height:10px;background:#fca5a5;"></span></div><span class="tiny">2×1 3×5 4×3</span></td>
+          <td style="font-weight:600">3.22</td>
+          <td><span class="bd bn">— 中性</span></td>
+          <td style="font-weight:600;color:#7a8caa">+1.444%</td>
+        </tr><tr>
+          <td class="an">含权-二级债基</td>
+          <td><div title="中性(3分): 8票 | 乐观(4分): 2票" style="display:flex;width:140px;border-radius:2px;overflow:hidden;cursor:default"><span style="display:inline-block;width:80%;height:10px;background:#d1d5db;"></span><span style="display:inline-block;width:20%;height:10px;background:#fca5a5;"></span></div><span class="tiny">3×8 4×2</span></td>
+          <td style="font-weight:600">3.20</td>
+          <td><span class="bd bn">— 中性</span></td>
+          <td style="font-weight:600;color:#7a8caa">+0.700%</td>
+        </tr><tr>
+          <td class="an">含权-红利</td>
+          <td><div title="中性(3分): 6票 | 乐观(4分): 4票" style="display:flex;width:140px;border-radius:2px;overflow:hidden;cursor:default"><span style="display:inline-block;width:60%;height:10px;background:#d1d5db;"></span><span style="display:inline-block;width:40%;height:10px;background:#fca5a5;"></span></div><span class="tiny">3×6 4×4</span></td>
+          <td style="font-weight:600">3.40</td>
+          <td><span class="bd bn">— 中性</span></td>
+          <td style="font-weight:600;color:#7a8caa">+2.600%</td>
+        </tr><tr>
+          <td class="an">含权-偏股混</td>
+          <td><div title="谨慎(2分): 1票 | 中性(3分): 5票 | 乐观(4分): 3票" style="display:flex;width:140px;border-radius:2px;overflow:hidden;cursor:default"><span style="display:inline-block;width:11%;height:10px;background:#86efac;"></span><span style="display:inline-block;width:56%;height:10px;background:#d1d5db;"></span><span style="display:inline-block;width:33%;height:10px;background:#fca5a5;"></span></div><span class="tiny">2×1 3×5 4×3</span></td>
+          <td style="font-weight:600">3.22</td>
+          <td><span class="bd bn">— 中性</span></td>
+          <td style="font-weight:600;color:#7a8caa">+1.444%</td>
+        </tr><tr>
+              <td class="an">含权-恒生科技</td>
+              <td style="color:#9ca3af;font-style:italic">无投票</td>
+              <td style="color:#9ca3af">—</td>
+              <td style="color:#9ca3af">—</td>
+              <td style="color:#9ca3af;font-size:11px;font-style:italic">完全依赖先验</td>
+            </tr><tr>
+          <td class="an">另类-黄金</td>
+          <td><div title="中性(3分): 2票 | 乐观(4分): 8票" style="display:flex;width:140px;border-radius:2px;overflow:hidden;cursor:default"><span style="display:inline-block;width:20%;height:10px;background:#d1d5db;"></span><span style="display:inline-block;width:80%;height:10px;background:#fca5a5;"></span></div><span class="tiny">3×2 4×8</span></td>
+          <td style="font-weight:600">3.80</td>
+          <td><span class="bd bu">▲ 看多</span></td>
+          <td style="font-weight:600;color:#e05252">+5.200%</td>
+        </tr></tbody>
+            </table>
+            <div class="note" style="margin-top:4px;line-height:2">
+              <div>* 色块：红=看多 灰=中性 绿=看空</div>
+              <div>* Q = 投票转换后年化预期收益率（固收已通过久期转换）</div>
+              <div>* 票型：1-谨慎 2-中性偏谨慎 3-中性 4-中性偏乐观 5-乐观</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 分隔线 -->
+      <div class="col-divider"></div>
+
+      <!-- 右栏：配置结果明细 -->
+      <div class="col">
+        <div class="card">
+          <div style="padding:4px 0 8px">
+            <div style="font-size:11px;font-weight:700;color:#7a8aa8;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">配置结果明细</div>
+            <table>
+              <thead>
+                <tr>
+                  <th>资产</th>
+                  <th>均衡权重</th>
+                  <th>配置权重</th>
+                  <th>变动</th>
+                  <th>配置方向</th>
+                  <th>约束范围</th>
+                </tr>
+              </thead>
+              <tbody><tr id="wrow-固收_存单">
+          <td class="an">固收-存单</td>
+          <td style="color:#8a9bb5">35.33%</td>
+          <td>0.00%</td>
+          <td style="color:#3dba7e;font-weight:600;font-size:12px">35.33% ↓</td>
+          <td><span class="bd" style="background:rgba(61,186,126,0.12);color:#3dba7e;padding:1px 7px;border-radius:20px;font-size:11px;font-weight:600">看空</span></td>
+          <td style="color:#6b7a99;font-size:12px">0~50%</td>
+        </tr><tr id="wrow-固收_信用">
+          <td class="an">固收-信用</td>
+          <td style="color:#8a9bb5">26.83%</td>
+          <td>27.02%</td>
+          <td style="color:#7a8caa;font-weight:600;font-size:12px">0.19% →</td>
+          <td><span class="bd" style="background:rgba(122,140,170,0.10);color:#7a8caa;padding:1px 7px;border-radius:20px;font-size:11px;font-weight:600">中性</span></td>
+          <td style="color:#6b7a99;font-size:12px">0~40%</td>
+        </tr><tr id="wrow-固收_利率10Y">
+          <td class="an">固收-利率10Y</td>
+          <td style="color:#8a9bb5">17.14%</td>
+          <td>15.03%</td>
+          <td style="color:#3dba7e;font-weight:600;font-size:12px">2.11% ↓</td>
+          <td><span class="bd" style="background:rgba(61,186,126,0.12);color:#3dba7e;padding:1px 7px;border-radius:20px;font-size:11px;font-weight:600">看空</span></td>
+          <td style="color:#6b7a99;font-size:12px">0~35%</td>
+        </tr><tr id="wrow-固收_利率30Y">
+          <td class="an">固收-利率30Y</td>
+          <td style="color:#8a9bb5">10.49%</td>
+          <td>20.00%</td>
+          <td style="color:#e05252;font-weight:600;font-size:12px">9.51% ↑</td>
+          <td><span class="bd" style="background:rgba(224,82,82,0.12);color:#e05252;padding:1px 7px;border-radius:20px;font-size:11px;font-weight:600">看多</span></td>
+          <td style="color:#6b7a99;font-size:12px">0~20%</td>
+        </tr><tr id="wrow-含权_转债">
+          <td class="an">含权-转债</td>
+          <td style="color:#8a9bb5">0.28%</td>
+          <td>10.00%</td>
+          <td style="color:#e05252;font-weight:600;font-size:12px">9.72% ↑</td>
+          <td><span class="bd" style="background:rgba(224,82,82,0.12);color:#e05252;padding:1px 7px;border-radius:20px;font-size:11px;font-weight:600">看多</span></td>
+          <td style="color:#6b7a99;font-size:12px">0~10%</td>
+        </tr><tr id="wrow-含权_二级债基">
+          <td class="an">含权-二级债基</td>
+          <td style="color:#8a9bb5">0.34%</td>
+          <td>10.00%</td>
+          <td style="color:#e05252;font-weight:600;font-size:12px">9.66% ↑</td>
+          <td><span class="bd" style="background:rgba(224,82,82,0.12);color:#e05252;padding:1px 7px;border-radius:20px;font-size:11px;font-weight:600">看多</span></td>
+          <td style="color:#6b7a99;font-size:12px">0~10%</td>
+        </tr><tr id="wrow-含权_红利">
+          <td class="an">含权-红利</td>
+          <td style="color:#8a9bb5">1.75%</td>
+          <td>5.00%</td>
+          <td style="color:#e05252;font-weight:600;font-size:12px">3.25% ↑</td>
+          <td><span class="bd" style="background:rgba(224,82,82,0.12);color:#e05252;padding:1px 7px;border-radius:20px;font-size:11px;font-weight:600">看多</span></td>
+          <td style="color:#6b7a99;font-size:12px">0~5%</td>
+        </tr><tr id="wrow-含权_偏股混">
+          <td class="an">含权-偏股混</td>
+          <td style="color:#8a9bb5">0.09%</td>
+          <td>2.63%</td>
+          <td style="color:#e05252;font-weight:600;font-size:12px">2.54% ↑</td>
+          <td><span class="bd" style="background:rgba(224,82,82,0.12);color:#e05252;padding:1px 7px;border-radius:20px;font-size:11px;font-weight:600">看多</span></td>
+          <td style="color:#6b7a99;font-size:12px">0~5%</td>
+        </tr><tr id="wrow-含权_恒生科技">
+          <td class="an">含权-恒生科技</td>
+          <td style="color:#8a9bb5">1.05%</td>
+          <td>1.32%</td>
+          <td style="color:#e05252;font-weight:600;font-size:12px">0.27% ↑</td>
+          <td><span class="bd" style="background:rgba(224,82,82,0.12);color:#e05252;padding:1px 7px;border-radius:20px;font-size:11px;font-weight:600">看多</span></td>
+          <td style="color:#6b7a99;font-size:12px">0~5%</td>
+        </tr><tr id="wrow-另类_黄金">
+          <td class="an">另类-黄金</td>
+          <td style="color:#8a9bb5">0.70%</td>
+          <td>3.00%</td>
+          <td style="color:#e05252;font-weight:600;font-size:12px">2.30% ↑</td>
+          <td><span class="bd" style="background:rgba(224,82,82,0.12);color:#e05252;padding:1px 7px;border-radius:20px;font-size:11px;font-weight:600">看多</span></td>
+          <td style="color:#6b7a99;font-size:12px">0~3%</td>
+        </tr><tr><td class="an" style="color:#6b7a99">流动性（锁定）</td><td style="color:#6b7a99">6.0%</td><td style="color:#6b7a99">6.0%</td><td style="color:#6b7a99">— →</td><td style="color:#6b7a99">—</td><td style="color:#6b7a99;font-size:11px">固定</td></tr></tbody>
+            </table>
+            <div class="note" style="margin-top:4px;line-height:2">
+              <div>* 组合权重基于后验收益 μ_BL 和历史协方差矩阵优化计算</div>
+              <div>* <strong style="color:#e2c87a">本表核心在于相对变化（w* − w_mkt），而非 w* 的绝对数值</strong>：模型绝对权重受建模假设影响，稳定性有限；w* − w_mkt 才是本期投委会观点的净信号，决定增减方向与幅度。w* 仅作为移动目标区间的参考上限，实际执行还需结合持仓、换手成本及流动性综合判断</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ Tab 1：模型说明 ══ -->
+  <div class="tab-content">
+    <div class="one-col">
+      <div class="card">
+        <div class="sec-title"><span class="num">①</span>模型原理简介</div>
+        <p class="desc">Black-Litterman 模型通过<strong>贝叶斯框架</strong>将市场均衡先验与投资委员会主观观点融合，解决了传统均值-方差优化对输入高度敏感的问题，输出更稳健的预期收益与配置权重。</p>
+        <div class="steps-grid">
+          <div class="step"><div class="sn">Step 01</div><div class="st">估计协方差矩阵</div><div class="sd">Ledoit-Wolf 收缩估计，基于近3年滚动历史，降低噪声</div></div>
+          <div class="step"><div class="sn">Step 02</div><div class="st">计算均衡基准权重</div><div class="sd">SAA 大类约束 + 大类内部风险平价，得均衡权重 w_mkt</div></div>
+          <div class="step"><div class="sn">Step 03</div><div class="st">推算均衡隐含收益 Π</div><div class="sd">从均衡权重反推市场隐含的预期收益率，作为贝叶斯先验</div></div>
+          <div class="step"><div class="sn">Step 04</div><div class="st">汇总投委会观点 Q</div><div class="sd">将打分（1–5分）转换为量化收益预期，委员分歧影响可信度</div></div>
+          <div class="step"><div class="sn">Step 05</div><div class="st">贝叶斯融合 → μ_BL</div><div class="sd">将均衡先验 Π 与观点 Q 按可信度加权融合，得后验收益</div></div>
+          <div class="step"><div class="sn">Step 06</div><div class="st">均值-方差优化 → w*</div><div class="sd">在 SAA 及权重约束下，基于 μ_BL 求解最优配置权重 w*</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="sec-title"><span class="num">②</span>模型设计说明</div>
+        <table class="design-tbl">
+          <thead><tr><th style="width:18%">设计决策</th><th style="width:42%">具体做法</th><th>原因</th></tr></thead>
+          <tbody>
+            <tr><td class="an">均衡基准权重</td><td>SAA 规定各大类总占比，大类内部多个子资产之间用<strong>风险平价</strong>分配</td><td class="tiny">使各子资产对组合风险的贡献相等，避免高波动资产占据绝大部分风险预算</td></tr>
+            <tr><td class="an">固收价格构造</td><td>中债登收益率曲线，通过 <em>价格收益率 = −久期 × 利率日变动</em> 还原</td><td class="tiny">固收无直接二级市场价格指数，需从收益率曲线还原价格波动</td></tr>
+            <tr><td class="an">协方差矩阵</td><td>Ledoit-Wolf 收缩估计，近3年滚动历史（约750个交易日）年化</td><td class="tiny">样本协方差矩阵在资产较多时噪声大，收缩估计能有效降低估计误差</td></tr>
+            <tr><td class="an">投委会观点</td><td>每个资产独立打分（绝对观点1–5），各档对应收益区间中点按票数加权</td><td class="tiny">绝对观点直观易操作；区间中点是保守的无偏估计</td></tr>
+            <tr><td class="an">固收观点转换</td><td>固收打分对应利率变动幅度（bp），乘以负久期换算为价格收益率</td><td class="tiny">投委会习惯用利率升降描述；BL 框架需统一的价格收益率口径</td></tr>
+            <tr><td class="an">观点不确定性 Ω</td><td>基础值取 He-Litterman 标准公式（τ·PΣPᵀ），再乘以委员分歧系数</td><td class="tiny">委员分歧越大，模型降低该观点可信度，更多依赖均衡先验</td></tr>
+            <tr><td class="an">流动性处理</td><td>流动性资产占比 6% 直接锁定，不参与 BL 优化；其余 94% 进入模型</td><td class="tiny">流动性配置由产品流动性管理需求决定，与收益优化目标无关</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card">
+        <div class="sec-title"><span class="num">③</span>参考文献</div>
+        <ul class="ref-list">
+          <li><span class="rn">1</span><span>Black, F., &amp; Litterman, R. (1992). <em>Global Portfolio Optimization.</em> Financial Analysts Journal, 48(5), 28–43.</span></li>
+          <li><span class="rn">2</span><span>He, G., &amp; Litterman, R. (1999). <em>The Intuition Behind Black-Litterman Model Portfolios.</em> Goldman Sachs Investment Management Research.</span></li>
+          <li><span class="rn">3</span><span>Ledoit, O., &amp; Wolf, M. (2004). <em>A well-conditioned estimator for large-dimensional covariance matrices.</em> Journal of Multivariate Analysis, 88(2), 365–411.</span></li>
+          <li><span class="rn">4</span><span>Maillard, S., Roncalli, T., &amp; Teïletche, J. (2010). <em>The Properties of Equally Weighted Risk Contribution Portfolios.</em> Journal of Portfolio Management, 36(4), 60–70.</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ Tab 2：收益融合过程（两栏：图表 | 表格）══ -->
+  <div class="tab-content">
+    <div class="two-col">
+      <!-- 左栏：图表 -->
+      <div class="col">
+        <div class="card" style="display:flex;flex-direction:column;flex:1">
+          <div class="sec-title"><span class="num">2</span>均衡收益 Π / 观点 Q / 后验收益 μ_BL</div>
+          <p class="desc">均衡收益 Π 是模型"出发点"（纯风险分散视角），观点 Q 是本期投委会主观判断，μ_BL 是贝叶斯融合后的最终预期收益，驱动后续优化。</p>
+          <div style="padding:8px 0">
+          <div style="display:flex;gap:4px;justify-content:center;margin-bottom:8px"><span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;font-size:11px;color:#9ca3af"><span style="display:inline-block;width:10px;height:10px;background:rgba(99,130,230,0.85);border-radius:2px"></span>均衡收益 Π</span><span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;font-size:11px;color:#9ca3af"><span style="display:inline-block;width:10px;height:10px;background:rgba(52,199,150,0.85);border-radius:2px"></span>观点 Q</span><span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;font-size:11px;color:#9ca3af"><span style="display:inline-block;width:10px;height:10px;background:rgba(248,113,56,0.85);border-radius:2px"></span>后验 μ_BL</span></div>
+          <div style="display:flex;align-items:flex-end;gap:6px;padding:0 8px;height:260px">
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:2px">
+              <div style="display:flex;align-items:flex-end;gap:2px;height:230px"><div title="固收-存单 | 均衡收益 Π: +0.021%" style="flex:1;min-width:0;height:1.0px;background:rgba(99,130,230,0.85);border-radius:3px 3px 0 0;margin-top:auto;cursor:default"></div><div title="固收-存单 | 观点 Q: -0.078%" style="flex:1;min-width:0;height:3.0px;background:rgba(52,199,150,0.85);border-radius:0 0 3px 3px;opacity:0.7;cursor:default"></div><div title="固收-存单 | 后验 μ_BL: -0.014%" style="flex:1;min-width:0;height:1.0px;background:rgba(248,113,56,0.85);border-radius:0 0 3px 3px;opacity:0.7;cursor:default"></div></div>
+              <div style="font-size:9px;color:#7a8caa;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">固收-存单</div>
+            </div><div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:2px">
+              <div style="display:flex;align-items:flex-end;gap:2px;height:230px"><div title="固收-信用 | 均衡收益 Π: +0.029%" style="flex:1;min-width:0;height:1.1px;background:rgba(99,130,230,0.85);border-radius:3px 3px 0 0;margin-top:auto;cursor:default"></div><div title="固收-信用 | 观点 Q: +0.115%" style="flex:1;min-width:0;height:4.4px;background:rgba(52,199,150,0.85);border-radius:3px 3px 0 0;margin-top:auto;cursor:default"></div><div title="固收-信用 | 后验 μ_BL: +0.061%" style="flex:1;min-width:0;height:2.3px;background:rgba(248,113,56,0.85);border-radius:3px 3px 0 0;margin-top:auto;cursor:default"></div></div>
+              <div style="font-size:9px;color:#7a8caa;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">固收-信用</div>
+            </div><div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:2px">
+              <div style="display:flex;align-items:flex-end;gap:2px;height:230px"><div title="固收-利率10Y | 均衡收益 Π: +0.046%" style="flex:1;min-width:0;height:1.8px;background:rgba(99,130,230,0.85);border-radius:3px 3px 0 0;margin-top:auto;cursor:default"></div><div title="固收-利率10Y | 观点 Q: +0.097%" style="flex:1;min-width:0;height:3.7px;background:rgba(52,199,150,0.85);border-radius:3px 3px 0 0;margin-top:auto;cursor:default"></div><div title="固收-利率10Y | 后验 μ_BL: +0.076%" style="flex:1;min-width:0;height:2.9px;background:rgba(248,113,56,0.85);border-radius:3px 3px 0 0;margin-top:auto;cursor:default"></div></div>
+              <div style="font-size:9px;color:#7a8caa;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">固收-利率…</div>
+            </div><div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:2px">
+              <div style="display:flex;align-items:flex-end;gap:2px;height:230px"><div title="固收-利率30Y | 均衡收益 Π: +0.074%" style="flex:1;min-width:0;height:2.8px;background:rgba(99,130,230,0.85);border-radius:3px 3px 0 0;margin-top:auto;cursor:default"></div><div title="固收-利率30Y | 观点 Q: +0.757%" style="flex:1;min-width:0;height:29.1px;background:rgba(52,199,150,0.85);border-radius:3px 3px 0 0;margin-top:auto;cursor:default"></div><div title="固收-利率30Y | 后验 μ_BL: +0.274%" style="flex:1;min-width:0;height:10.5px;background:rgba(248,113,56,0.85);border-radius:3px 3px 0 0;margin-top:auto;cursor:default"></div></div>
+              <div style="font-size:9px;color:#7a8caa;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">固收-利率…</div>
+            </div><div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:2px">
+              <div style="display:flex;align-items:flex-end;gap:2px;height:230px"><div title="含权-转债 | 均衡收益 Π: +0.007%" style="flex:1;min-width:0;height:1.0px;background:rgba(99,130,230,0.85);border-radius:3px 3px 0 0;margin-top:auto;cursor:default"></div><div title="含权-转债 | 观点 Q: +1.444%" style="flex:1;min-width:0;height:55.5px;background:rgba(52,199,150,0.85);border-radius:3px 3px 0 0;margin-top:auto;cursor:default"></div><div title="含权-转债 | 后验 μ_BL: +0.308%" style="flex:1;min-width:0;height:11.8px;background:rgba(248,113,56,0.85);border-radius:3px 3px 0 0;margin-top:auto;cursor:default"></div></div>
+              <div style="font-size:9px;color:#7a8caa;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">含权-转债</div>
+            </div><div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:2px">
+              <div style="display:flex;align-items:flex-end;gap:2px;height:230px"><div title="含权-二级债基 | 均衡收益 Π: +0.004%" style="flex:1;min-width:0;height:1.0px;background:rgba(99,130,230,0.85);border-radius:3px 3px 0 0;margin-top:auto;cursor:default"></div><div title="含权-二级债基 | 观点 Q: +0.700%" style="flex:1;min-width:0;height:26.9px;background:rgba(52,199,150,0.85);border-radius:3px 3px 0 0;margin-top:auto;cursor:default"></div><div title="含权-二级债基 | 后验 μ_BL: +0.178%" style="flex:1;min-width:0;height:6.8px;background:rgba(248,113,56,0.85);border-radius:3px 3px 0 0;margin-top:auto;cursor:default"></div></div>
+              <div style="font-size:9px;color:#7a8caa;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">含权-二级…</div>
+            </div><div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:2px">
+              <div style="display:flex;align-items:flex-end;gap:2px;height:230px"><div title="含权-红利 | 均衡收益 Π: +0.147%" style="flex:1;min-width:0;height:5.7px;background:rgba(99,130,230,0.85);border-radius:3px 3px 0 0;margin-top:auto;cursor:default"></div><div title="含权-红利 | 观点 Q: +2.600%" style="flex:1;min-width:0;height:100.0px;background:rgba(52,199,150,0.85);border-radius:3px 3px 0 0;margin-top:auto;cursor:default"></div><div title="含权-红利 | 后验 μ_BL: +0.889%" style="flex:1;min-width:0;height:34.2px;background:rgba(248,113,56,0.85);border-radius:3px 3px 0 0;margin-top:auto;cursor:default"></div></div>
+              <div style="font-size:9px;color:#7a8caa;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">含权-红利</div>
+            </div><div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:2px">
+              <div style="display:flex;align-items:flex-end;gap:2px;height:230px"><div title="含权-偏股混 | 均衡收益 Π: -0.005%" style="flex:1;min-width:0;height:1.0px;background:rgba(99,130,230,0.85);border-radius:0 0 3px 3px;opacity:0.7;cursor:default"></div><div title="含权-偏股混 | 观点 Q: +1.444%" style="flex:1;min-width:0;height:55.5px;background:rgba(52,199,150,0.85);border-radius:3px 3px 0 0;margin-top:auto;cursor:default"></div><div title="含权-偏股混 | 后验 μ_BL: +0.323%" style="flex:1;min-width:0;height:12.4px;background:rgba(248,113,56,0.85);border-radius:3px 3px 0 0;margin-top:auto;cursor:default"></div></div>
+              <div style="font-size:9px;color:#7a8caa;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">含权-偏股混</div>
+            </div><div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:2px">
+              <div style="display:flex;align-items:flex-end;gap:2px;height:230px"><div title="含权-恒生科技 | 均衡收益 Π: +0.285%" style="flex:1;min-width:0;height:11.0px;background:rgba(99,130,230,0.85);border-radius:3px 3px 0 0;margin-top:auto;cursor:default"></div><div title="含权-恒生科技 | 观点 Q: +5.200%" style="flex:1;min-width:0;height:200.0px;background:rgba(52,199,150,0.85);border-radius:3px 3px 0 0;margin-top:auto;cursor:default"></div><div title="含权-恒生科技 | 后验 μ_BL: +0.407%" style="flex:1;min-width:0;height:15.7px;background:rgba(248,113,56,0.85);border-radius:3px 3px 0 0;margin-top:auto;cursor:default"></div></div>
+              <div style="font-size:9px;color:#7a8caa;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">含权-恒生…</div>
+            </div><div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:2px">
+              <div style="display:flex;align-items:flex-end;gap:2px;height:230px"><div title="另类-黄金 | 均衡收益 Π: +0.060%" style="flex:1;min-width:0;height:2.3px;background:rgba(99,130,230,0.85);border-radius:3px 3px 0 0;margin-top:auto;cursor:default"></div><div title="另类-黄金 | 观点 Q: +0.000%" style="flex:1;min-width:0;height:1.0px;background:rgba(52,199,150,0.85);border-radius:3px 3px 0 0;margin-top:auto;cursor:default"></div><div title="另类-黄金 | 后验 μ_BL: +2.122%" style="flex:1;min-width:0;height:81.6px;background:rgba(248,113,56,0.85);border-radius:3px 3px 0 0;margin-top:auto;cursor:default"></div></div>
+              <div style="font-size:9px;color:#7a8caa;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">另类-黄金</div>
+            </div>
+          </div>
+        </div>
+        </div>
+      </div>
+      <!-- 分割线 -->
+      <div class="col-divider"></div>
+      <!-- 右栏：表格 -->
+      <div class="col">
+        <div class="card" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
+          <div class="sec-title"><span class="num">2</span>收益融合明细</div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>资产</th>
+                  <th style="text-align:right">均衡收益 Π</th>
+                  <th style="text-align:right">观点 Q</th>
+                  <th style="text-align:right">后验 μ_BL</th>
+                  <th style="text-align:right">融合偏移</th>
+                </tr>
+              </thead>
+              <tbody><tr>
+          <td class="an">固收-存单</td>
+          <td style="text-align:right">0.021%</td>
+          <td style="text-align:right">-0.078%</td>
+          <td style="text-align:right;font-weight:600">-0.014%</td>
+          <td style="text-align:right;color:#6b7280;font-weight:600">-0.035% →</td>
+        </tr><tr>
+          <td class="an">固收-信用</td>
+          <td style="text-align:right">0.029%</td>
+          <td style="text-align:right">+0.115%</td>
+          <td style="text-align:right;font-weight:600">0.061%</td>
+          <td style="text-align:right;color:#6b7280;font-weight:600">+0.032% →</td>
+        </tr><tr>
+          <td class="an">固收-利率10Y</td>
+          <td style="text-align:right">0.046%</td>
+          <td style="text-align:right">+0.097%</td>
+          <td style="text-align:right;font-weight:600">0.076%</td>
+          <td style="text-align:right;color:#6b7280;font-weight:600">+0.029% →</td>
+        </tr><tr>
+          <td class="an">固收-利率30Y</td>
+          <td style="text-align:right">0.074%</td>
+          <td style="text-align:right">+0.757%</td>
+          <td style="text-align:right;font-weight:600">0.274%</td>
+          <td style="text-align:right;color:#dc2626;font-weight:600">+0.200% ↑</td>
+        </tr><tr>
+          <td class="an">含权-转债</td>
+          <td style="text-align:right">0.007%</td>
+          <td style="text-align:right">+1.444%</td>
+          <td style="text-align:right;font-weight:600">0.308%</td>
+          <td style="text-align:right;color:#dc2626;font-weight:600">+0.301% ↑</td>
+        </tr><tr>
+          <td class="an">含权-二级债基</td>
+          <td style="text-align:right">0.004%</td>
+          <td style="text-align:right">+0.700%</td>
+          <td style="text-align:right;font-weight:600">0.178%</td>
+          <td style="text-align:right;color:#dc2626;font-weight:600">+0.175% ↑</td>
+        </tr><tr>
+          <td class="an">含权-红利</td>
+          <td style="text-align:right">0.147%</td>
+          <td style="text-align:right">+2.600%</td>
+          <td style="text-align:right;font-weight:600">0.889%</td>
+          <td style="text-align:right;color:#dc2626;font-weight:600">+0.742% ↑</td>
+        </tr><tr>
+          <td class="an">含权-偏股混</td>
+          <td style="text-align:right">-0.005%</td>
+          <td style="text-align:right">+1.444%</td>
+          <td style="text-align:right;font-weight:600">0.323%</td>
+          <td style="text-align:right;color:#dc2626;font-weight:600">+0.329% ↑</td>
+        </tr><tr>
+          <td class="an">含权-恒生科技</td>
+          <td style="text-align:right">0.285%</td>
+          <td style="text-align:right">+5.200%</td>
+          <td style="text-align:right;font-weight:600">0.407%</td>
+          <td style="text-align:right;color:#dc2626;font-weight:600">+0.122% ↑</td>
+        </tr><tr>
+          <td class="an">另类-黄金</td>
+          <td style="text-align:right">0.060%</td>
+          <td style="text-align:right">+0.000%</td>
+          <td style="text-align:right;font-weight:600">2.122%</td>
+          <td style="text-align:right;color:#dc2626;font-weight:600">+2.062% ↑</td>
+        </tr></tbody>
+            </table>
+          </div>
+          <div class="note">* 融合偏移 = μ_BL − Π，正值表示观点拉高了对该资产的收益预期</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ Tab 3：约束说明 ══ -->
+  <div class="tab-content">
+    <div class="two-col" style="align-items:stretch">
+      <div class="col">
+        <div class="card" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
+          <div class="sec-title"><span class="num">4</span>本期生效约束</div>
+          <p class="desc">固收子类权重上下限基于本期风险平价权重动态生成（±30%），防止久期风险过度集中。含权资产合计上限 20%，流动性资产固定 6%。</p>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>资产 / 分组</th>
+                  <th>约束类型</th>
+                  <th>本期范围</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody><tr><td class="an">固收-存单</td><td><span class="bd bn">动态</span></td><td>0.0% ~ 50.0%</td><td class="tiny" style="color:#9ca3af">风险平价权重 ±30%</td></tr><tr><td class="an">固收-信用</td><td><span class="bd bn">动态</span></td><td>0.0% ~ 40.0%</td><td class="tiny" style="color:#9ca3af">风险平价权重 ±30%</td></tr><tr><td class="an">固收-利率10Y</td><td><span class="bd bn">动态</span></td><td>0.0% ~ 35.0%</td><td class="tiny" style="color:#9ca3af">风险平价权重 ±30%</td></tr><tr><td class="an">固收-利率30Y</td><td><span class="bd bn">动态</span></td><td>0.0% ~ 20.0%</td><td class="tiny" style="color:#9ca3af">风险平价权重 ±30%</td></tr><tr><td class="an">含权-转债</td><td><span class="bd bn">动态</span></td><td>0.0% ~ 10.0%</td><td class="tiny" style="color:#9ca3af">风险平价权重 ±30%</td></tr><tr><td class="an">含权-二级债基</td><td><span class="bd bn">动态</span></td><td>0.0% ~ 10.0%</td><td class="tiny" style="color:#9ca3af">风险平价权重 ±30%</td></tr><tr><td class="an">含权-红利</td><td><span class="bd bn">动态</span></td><td>0.0% ~ 5.0%</td><td class="tiny" style="color:#9ca3af">风险平价权重 ±30%</td></tr><tr><td class="an">含权-偏股混</td><td><span class="bd bn">动态</span></td><td>0.0% ~ 5.0%</td><td class="tiny" style="color:#9ca3af">风险平价权重 ±30%</td></tr><tr><td class="an">含权-恒生科技</td><td><span class="bd bn">动态</span></td><td>0.0% ~ 5.0%</td><td class="tiny" style="color:#9ca3af">风险平价权重 ±30%</td></tr><tr><td class="an">另类-黄金</td><td><span class="bd bn">动态</span></td><td>0.0% ~ 3.0%</td><td class="tiny" style="color:#9ca3af">风险平价权重 ±30%</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="col-divider"></div>
+      <div class="col">
+        <div class="card" style="display:flex;flex-direction:column;flex:1;min-height:0">
+          <div class="sec-title">约束设计原则</div>
+          <table>
+            <thead><tr><th>约束类型</th><th>规则</th><th>目的</th></tr></thead>
+            <tbody>
+              <tr><td class="an">固收动态约束</td><td>风险平价权重 × (1 ± 30%)</td><td class="tiny">防止久期过度集中</td></tr>
+              <tr><td class="an">含权合计上限</td><td>含权类资产合计 ≤ 20%</td><td class="tiny">匹配产品风险属性</td></tr>
+              <tr><td class="an">流动性锁定</td><td>固定 6%，不进优化</td><td class="tiny">满足产品流动性需求</td></tr>
+              <tr><td class="an">全局权重下限</td><td>各资产 ≥ 0%（做多）</td><td class="tiny">不允许做空</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- end body-wrap -->
+
+<script>
+function switchTab(idx) {
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', i===idx));
+  document.querySelectorAll('.tab-content').forEach((c,i) => c.classList.toggle('active', i===idx));
+  // 切换到 Tab2 时渲染收益图（首次可能未渲染）
+  if(idx===2) { setTimeout(initReturnChart, 50); }
+}
+
+function highlightRow(rowId) {
+  var row = document.getElementById(rowId);
+  if (!row) return;
+  row.scrollIntoView({behavior:'smooth', block:'center'});
+  row.style.transition = 'background 0.2s';
+  row.style.background = 'rgba(248,180,60,0.30)';
+  setTimeout(function() {
+    row.style.transition = 'background 1.5s';
+    row.style.background = '';
+  }, 1200);
+}
+</script>
+</body>
+</html>

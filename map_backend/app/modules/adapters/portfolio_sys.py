@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 import random
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from pydantic import BaseModel
@@ -83,7 +83,7 @@ class MockPortfolioAdapter:
         }
         return PortfolioPositionData(
             portfolio_id=portfolio_id,
-            snapshot_at=datetime.now(UTC),
+            snapshot_at=datetime.now(timezone.utc),
             total_nav=total_nav,
             positions=positions,
         )
@@ -132,7 +132,7 @@ class PortfolioSystemAdapter(BaseAdapter):
             )
         return PortfolioPositionData(
             portfolio_id=raw.get("portfolio_id", ""),
-            snapshot_at=datetime.fromisoformat(raw.get("as_of", datetime.now(UTC).isoformat())),
+            snapshot_at=datetime.fromisoformat(raw.get("as_of", datetime.now(timezone.utc).isoformat())),
             total_nav=float(raw.get("total_nav", 0)),
             positions=positions,
         )

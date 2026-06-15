@@ -21,7 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import sqlite3
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -150,7 +150,7 @@ def main() -> int:
 
     inserted = 0
     skipped = 0
-    now_str = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
     with sqlite3.connect(str(db_path)) as conn:
         conn.row_factory = sqlite3.Row

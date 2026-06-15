@@ -1,4 +1,4 @@
-﻿﻿﻿<template>
+﻿<template>
   <div class="flex flex-col h-full bg-[#161922] text-[#E8ECF4] overflow-hidden font-sans">
 
     <!-- Workbench Context Banner (auto-shows when navigated from TerminalDashboard) -->
@@ -10,20 +10,30 @@
       leave-from-class="opacity-100 translate-y-0"
       leave-to-class="opacity-0 -translate-y-2"
     >
-      <div v-if="isFromWorkbench" class="bg-[#0F2240] border-b border-[#3B9EFF]/20 py-1.5 px-4 flex items-center justify-between shrink-0">
+      <div v-if="isFromWorkbench" class="border-b py-1.5 px-4 flex items-center justify-between shrink-0"
+        :class="sharedIntentState.callerTab === 'taa'
+          ? 'bg-[#0B1F35] border-[#3B9EFF]/25'
+          : 'bg-[#0F2240] border-[#3B9EFF]/20'">
         <div class="flex items-center space-x-2 text-[11px]">
           <div class="w-1.5 h-1.5 rounded-full bg-[#3B9EFF] animate-pulse shrink-0"></div>
-          <span class="text-[#3B9EFF]/80 font-mono">
+          <span class="text-[#3B9EFF]/80 font-mono" v-if="sharedIntentState.callerTab === 'taa'">
+            已从
+            <span class="font-bold text-[#3B9EFF]">【资配工作台 · TAA 目标组合】</span>
+            跳转进入
+            <span class="text-[#3B9EFF] font-bold mx-1">·</span>
+            运行模型后点击
+            <span class="font-bold text-[#3B9EFF]">「确认应用并返回」</span>
+            将自动回填大类资产目标权重
+          </span>
+          <span class="text-[#3B9EFF]/80 font-mono" v-else>
             已从【资配工作台】跳转进入
             <span class="text-[#3B9EFF] font-bold mx-1">·</span>
             来源视图：
-            <span class="font-bold text-[#3B9EFF]">
-              {{ sharedIntentState.callerTab === 'taa' ? '目标组合 (TAA)' : '意向组合 (Intent)' }}
-            </span>
+            <span class="font-bold text-[#3B9EFF]">意向组合 (Intent)</span>
           </span>
         </div>
         <div class="text-[10px] font-mono text-[#94A3B8]">
-          运行模型后，从结构化输出中勾选指标并推送返回工作台
+          {{ sharedIntentState.callerTab === 'taa' ? '权重将写入 TAA 目标配置滑块' : '运行模型后，从结构化输出中勾选指标并推送返回工作台' }}
         </div>
       </div>
     </Transition>
@@ -132,61 +142,103 @@
 
         <!-- ═══ LEADERBOARD ═══ -->
         <div v-if="showLeaderboard" class="absolute inset-0 bg-[#161922] flex flex-col z-30 overflow-hidden">
-          <div class="px-5 py-3.5 border-b border-[#252A3A] bg-[#1A1E2B] shrink-0">
-            <h2 class="am-title-l1"><div class="am-title-bar"></div>模型调用热度榜
-              <span class="ml-3 text-[13px] font-normal text-[#94A3B8] font-mono">Leaderboard</span>
-            </h2>
-            <p class="text-[11px] text-[#94A3B8] mt-1 font-mono">全公司模型调用频次排行，数据每月更新</p>
-          </div>
-          <div class="flex-1 overflow-y-auto p-4 no-scrollbar">
-            <div class="max-w-6xl mx-auto bg-[#1A1E2B] border border-[#252A3A] rounded overflow-hidden">
-              <table class="min-w-full divide-y divide-[#252A3A]">
-                <thead class="bg-[#202431] sticky top-0 z-10">
-                  <tr>
-                    <th class="px-4 py-2.5 text-left text-[11px] font-semibold text-[#94A3B8] uppercase tracking-widest w-24">排名</th>
-                    <th class="px-4 py-2.5 text-left text-[11px] font-semibold text-[#94A3B8] uppercase tracking-widest">模型名称</th>
-                    <th class="px-4 py-2.5 text-left text-[11px] font-semibold text-[#94A3B8] uppercase tracking-widest w-28">类型</th>
-                    <th class="px-4 py-2.5 text-left text-[11px] font-semibold text-[#94A3B8] uppercase tracking-widest w-28">作者</th>
-                    <th class="px-4 py-2.5 text-left text-[11px] font-semibold text-[#94A3B8] uppercase tracking-widest w-36">所属部门</th>
-                    <th class="px-4 py-2.5 text-right text-[11px] font-semibold text-[#94A3B8] uppercase tracking-widest w-28">月度调用</th>
-                    <th class="px-4 py-2.5 text-right text-[11px] font-semibold text-[#94A3B8] uppercase tracking-widest w-24">环比趋势</th>
-                  </tr>
-                </thead>
-                <tbody class="bg-[#161922] divide-y divide-[#252A3A]">
-                  <tr
-                    v-for="(model, index) in leaderboardModels"
-                    :key="model.id"
-                    @click="handleSelectModel(model); showLeaderboard = false"
-                    class="hover:bg-[#202431] transition-colors cursor-pointer group"
-                  >
-                    <td class="px-4 py-3 whitespace-nowrap">
-                      <div :class="cn('w-7 h-7 rounded flex items-center justify-center text-[13px] font-bold font-mono', index === 0 ? 'bg-[#FFAB00]/12 text-[#FFAB00] border border-[#FFAB00]/30' : index === 1 ? 'bg-[#8B93A8]/10 text-[#B4BAC9] border border-[#8B93A8]/25' : index === 2 ? 'bg-[#FFAB00]/8 text-[#FFAB00]/70 border border-[#FFAB00]/20' : 'bg-[#202431] text-[#94A3B8] border border-[#2E3348]')">
-                        {{ index + 1 }}
-                      </div>
-                    </td>
-                    <td class="px-4 py-3 whitespace-nowrap">
-                      <div class="text-[13px] font-semibold text-[#E8ECF4] group-hover:text-[#3B9EFF] transition-colors">{{ model.name }}</div>
-                      <div class="text-[11px] text-[#94A3B8] mt-0.5 truncate max-w-md">{{ model.desc }}</div>
-                    </td>
-                    <td class="px-4 py-3 whitespace-nowrap">
-                      <span :class="cn('px-1.5 py-px rounded text-[11px] font-mono border', model.type === 'ai' ? 'bg-purple-900/15 text-purple-400/80 border-purple-500/18' : model.type === 'classic' ? 'bg-[#3B9EFF]/10 text-[#3B9EFF]/80 border-[#3B9EFF]/18' : 'bg-[#2A2E3D] text-[#B4BAC9] border-[#2E3348]')">
-                        {{ model.type === 'ai' ? 'AI 模型' : model.type === 'classic' ? '经典模型' : '自定义' }}
-                      </span>
-                    </td>
-                    <td class="px-4 py-3 whitespace-nowrap text-[13px] text-[#94A3B8]">
-                      <div class="flex items-center"><User class="w-3 h-3 mr-1 text-[#64748B]" />{{ model.author }}</div>
-                    </td>
-                    <td class="px-4 py-3 whitespace-nowrap text-[13px] text-[#94A3B8]">{{ model.department }}</td>
-                    <td class="px-4 py-3 whitespace-nowrap text-right">
-                      <span class="text-[13px] font-mono font-bold text-[#FFAB00]/75">{{ model.usageCount.toLocaleString() }}</span>
-                    </td>
-                    <td class="px-4 py-3 whitespace-nowrap text-right">
-                      <span :class="cn('text-[13px] font-mono font-bold', model.trend.startsWith('+') ? 'text-[#00C9A7]' : model.trend.startsWith('-') ? 'text-[#FF5630]' : 'text-[#94A3B8]')">{{ model.trend }}</span>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+          <div class="px-5 py-3 border-b border-[#252A3A] bg-[#1A1E2B] shrink-0 flex items-center justify-between">
+            <div>
+              <h2 class="am-title-l1 flex items-center">
+                <div class="am-title-bar"></div>
+                <Trophy class="w-4 h-4 text-[#FFAB00] mr-2 shrink-0" />
+                模型调用热度榜
+                <span class="ml-2.5 text-[11px] font-normal text-[#94A3B8] font-mono uppercase tracking-widest">· 业绩追踪矩阵</span>
+              </h2>
+              <p class="text-[10px] text-[#94A3B8] mt-0.5 font-mono">按调用热度降序排列 · 全公司模型 · 近12月回测业绩 · 数据每月更新</p>
             </div>
+            <div class="flex items-center space-x-3 text-[10px] font-mono text-[#64748B]">
+              <span class="flex items-center space-x-1"><span class="inline-block w-2 h-2 rounded-full bg-[#F04864]"></span><span>超额收益为正</span></span>
+              <span class="flex items-center space-x-1"><span class="inline-block w-2 h-2 rounded-full bg-[#00C9A7]"></span><span>超额收益为负</span></span>
+            </div>
+          </div>
+          <div class="flex-1 overflow-y-auto no-scrollbar">
+            <table class="min-w-full">
+              <thead class="bg-[#1A1E2B] sticky top-0 z-10 border-b border-[#252A3A]">
+                <tr>
+                  <th class="pl-4 pr-2 py-2 text-center text-xs text-slate-400 font-normal uppercase tracking-widest w-14">排名</th>
+                  <th class="px-4 py-2 text-left text-xs text-slate-400 font-normal uppercase tracking-widest">模型名称</th>
+                  <th class="px-4 py-2 text-right text-xs text-slate-400 font-normal uppercase tracking-widest w-36">调用热度</th>
+                  <th class="px-4 py-2 text-right text-xs text-slate-400 font-normal uppercase tracking-widest w-28">年化收益</th>
+                  <th class="px-4 py-2 text-right text-xs text-slate-400 font-normal uppercase tracking-widest w-28">超额收益</th>
+                  <th class="px-4 py-2 text-right text-xs text-slate-400 font-normal uppercase tracking-widest w-28">最大回撤</th>
+                  <th class="px-4 py-2 text-right text-xs text-slate-400 font-normal uppercase tracking-widest w-36">操作</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-[#252A3A]">
+                <tr
+                  v-for="(model, index) in leaderboardModels"
+                  :key="model.id"
+                  class="hover:bg-slate-800/50 transition-colors cursor-pointer group"
+                  @click="handleSelectModel(model); showLeaderboard = false"
+                >
+                  <!-- 排名徽章 -->
+                  <td class="pl-4 pr-2 py-2.5 text-center whitespace-nowrap">
+                    <div :class="cn('inline-flex w-7 h-7 rounded items-center justify-center text-[13px] font-bold font-mono',
+                      index === 0 ? 'bg-[#FFAB00]/15 text-[#FFAB00] border border-[#FFAB00]/35' :
+                      index === 1 ? 'bg-[#8B93A8]/10 text-[#B4BAC9] border border-[#8B93A8]/25' :
+                      index === 2 ? 'bg-[#CD7F32]/10 text-[#CD7F32]/80 border border-[#CD7F32]/25' :
+                                   'bg-[#1A1E2B] text-[#64748B] border border-[#252A3A]')">
+                      {{ index + 1 }}
+                    </div>
+                  </td>
+                  <!-- 模型名称 + 类型标签 + 详情入口 -->
+                  <td class="px-4 py-2.5">
+                    <div class="flex items-center space-x-2 min-w-0">
+                      <span class="text-[13px] font-semibold text-[#E8ECF4] group-hover:text-[#3B9EFF] transition-colors truncate">{{ model.name }}</span>
+                      <!-- 资配/策略/AI/自定义 标签 -->
+                      <span :class="cn('shrink-0 px-1.5 py-px rounded text-[10px] font-mono border', model.type === 'ai' ? 'bg-purple-900/15 text-purple-400/70 border-purple-500/20' : model.subType === 'alloc' ? 'bg-[#3B9EFF]/8 text-[#3B9EFF]/70 border-[#3B9EFF]/20' : model.subType === 'strategy' ? 'bg-amber-400/8 text-amber-400/70 border-amber-400/20' : 'bg-[#202431] text-[#94A3B8] border-[#2E3348]')">
+                        {{ model.type === 'ai' ? 'AI' : model.subType === 'alloc' ? '资配模型' : model.subType === 'strategy' ? '策略模型' : '自定义' }}
+                      </span>
+                      <!-- 详情图标 -->
+                      <button
+                        @click.stop="openDetailModal(model)"
+                        class="shrink-0 p-0.5 rounded text-[#64748B] hover:text-[#3B9EFF] hover:bg-[#3B9EFF]/8 transition-colors"
+                        title="查看模型详情"
+                      >
+                        <InfoFilled class="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </td>
+                  <!-- 调用热度 + 趋势 -->
+                  <td class="px-4 py-2.5 whitespace-nowrap text-right">
+                    <div class="flex items-center justify-end space-x-1.5">
+                      <span :class="cn('text-[10px] font-mono font-semibold px-1 py-px rounded', model.trend.startsWith('+') ? 'text-[#00C9A7] bg-[#00C9A7]/8' : model.trend.startsWith('-') ? 'text-[#FF5630] bg-[#FF5630]/8' : 'text-[#94A3B8]')">
+                        {{ model.trend }}
+                      </span>
+                      <span class="text-[13px] font-mono text-[#FFAB00]/80">{{ model.usageCount.toLocaleString() }}</span>
+                    </div>
+                  </td>
+                  <!-- 年化收益 -->
+                  <td class="px-4 py-2.5 whitespace-nowrap text-right">
+                    <span class="text-[13px] font-mono text-[#E8ECF4]">{{ model.annualizedReturn ?? '—' }}</span>
+                  </td>
+                  <!-- 超额收益 — 正值红色加粗，负值绿色 -->
+                  <td class="px-4 py-2.5 whitespace-nowrap text-right">
+                    <span v-if="model.excessReturn" :class="cn('text-[13px] font-mono font-bold', model.excessReturn.startsWith('+') ? 'text-[#F04864]' : 'text-[#00C9A7]')">
+                      {{ model.excessReturn }}
+                    </span>
+                    <span v-else class="text-[13px] font-mono text-[#64748B]">—</span>
+                  </td>
+                  <!-- 最大回撤 -->
+                  <td class="px-4 py-2.5 whitespace-nowrap text-right">
+                    <span class="text-[13px] font-mono text-[#94A3B8]">{{ model.maxDrawdown ?? '—' }}</span>
+                  </td>
+                  <!-- 操作 -->
+                  <td class="px-4 py-2.5 whitespace-nowrap text-right" @click.stop>
+                    <button
+                      @click="handleSelectModel(model); showLeaderboard = false"
+                      class="px-3 py-1 text-[11px] font-mono text-[#3B9EFF] border border-[#3B9EFF]/30 rounded bg-[#3B9EFF]/5 hover:bg-[#3B9EFF]/15 hover:border-[#3B9EFF]/50 transition-colors whitespace-nowrap"
+                    >应用模型</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -708,6 +760,145 @@
         </div>
       </div>
     </div>
+
+    <!-- ═══ MODEL DETAIL MODAL ═══ -->
+    <Transition
+      enter-active-class="transition-all duration-200 ease-out"
+      enter-from-class="opacity-0 scale-95"
+      enter-to-class="opacity-100 scale-100"
+      leave-active-class="transition-all duration-150 ease-in"
+      leave-from-class="opacity-100 scale-100"
+      leave-to-class="opacity-0 scale-95"
+    >
+      <div v-if="showDetailModal && detailModel" class="fixed inset-0 bg-black/75 z-[60] flex items-center justify-center p-4" @click.self="showDetailModal = false">
+        <div class="bg-[#1A1E2B] border border-[#252A3A] rounded w-[680px] max-w-[95vw] max-h-[88vh] flex flex-col overflow-hidden">
+
+          <!-- Header -->
+          <div class="px-5 py-4 bg-[#202431] border-b border-[#252A3A] flex items-start justify-between shrink-0">
+            <div class="flex-1 min-w-0 mr-4">
+              <div class="flex items-center flex-wrap gap-2">
+                <h3 class="text-[15px] font-bold text-[#E8ECF4] truncate">{{ detailModel.name }}</h3>
+                <!-- 类型标签 -->
+                <span :class="cn('px-1.5 py-px rounded text-[10px] font-mono border', detailModel.type === 'ai' ? 'bg-purple-900/15 text-purple-400/80 border-purple-500/20' : detailModel.subType === 'alloc' ? 'bg-[#3B9EFF]/10 text-[#3B9EFF]/80 border-[#3B9EFF]/22' : detailModel.subType === 'strategy' ? 'bg-amber-400/10 text-amber-400/80 border-amber-400/22' : 'bg-[#202431] text-[#94A3B8] border-[#2E3348]')">
+                  {{ detailModel.type === 'ai' ? 'AI 模型' : detailModel.subType === 'alloc' ? '资配模型' : detailModel.subType === 'strategy' ? '策略模型' : '自定义' }}
+                </span>
+                <!-- 可见范围 -->
+                <span :class="cn('px-1.5 py-px rounded text-[10px] font-mono border', detailModel.visibility === 'private' ? 'bg-emerald-900/15 text-emerald-400/70 border-emerald-500/20' : detailModel.visibility === 'dept' ? 'bg-[#FFAB00]/8 text-[#FFAB00]/70 border-[#FFAB00]/20' : 'bg-[#202431] text-[#94A3B8] border-[#2E3348]')">
+                  {{ detailModel.visibility === 'private' ? '🔒 加密私有' : detailModel.visibility === 'dept' ? '部门共享' : '全公司' }}
+                </span>
+              </div>
+            </div>
+            <button @click="showDetailModal = false" class="text-[#94A3B8] hover:text-[#E8ECF4] transition-colors p-1 rounded hover:bg-[#2E3348] shrink-0">
+              <Close class="w-4 h-4" />
+            </button>
+          </div>
+
+          <div class="flex-1 overflow-y-auto no-scrollbar">
+
+            <!-- Meta grid -->
+            <div class="px-5 py-4 grid grid-cols-4 gap-4 border-b border-[#252A3A]">
+              <div>
+                <p class="text-[10px] font-mono text-[#64748B] uppercase tracking-widest mb-1">创建人</p>
+                <div class="flex items-center space-x-1.5">
+                  <User class="w-3 h-3 text-[#94A3B8]" />
+                  <span class="text-[13px] text-[#B4BAC9]">{{ detailModel.author }}</span>
+                </div>
+              </div>
+              <div>
+                <p class="text-[10px] font-mono text-[#64748B] uppercase tracking-widest mb-1">所属部门</p>
+                <div class="flex items-center space-x-1.5">
+                  <OfficeBuilding class="w-3 h-3 text-[#94A3B8]" />
+                  <span class="text-[13px] text-[#B4BAC9]">{{ detailModel.department }}</span>
+                </div>
+              </div>
+              <div>
+                <p class="text-[10px] font-mono text-[#64748B] uppercase tracking-widest mb-1">更新时间</p>
+                <div class="flex items-center space-x-1.5">
+                  <TrendCharts class="w-3 h-3 text-[#94A3B8]" />
+                  <span class="text-[13px] font-mono text-[#B4BAC9]">{{ detailModel.updateTime }}</span>
+                </div>
+              </div>
+              <div>
+                <p class="text-[10px] font-mono text-[#64748B] uppercase tracking-widest mb-1">累计调用</p>
+                <div class="flex items-center space-x-1.5">
+                  <Lightning class="w-3 h-3 text-[#FFAB00]/60" />
+                  <span class="text-[13px] font-mono text-[#FFAB00]/80">{{ detailModel.usageCount.toLocaleString() }}</span>
+                  <span :class="cn('text-[10px] font-mono font-semibold ml-0.5', detailModel.trend.startsWith('+') ? 'text-[#00C9A7]' : detailModel.trend.startsWith('-') ? 'text-[#FF5630]' : 'text-[#94A3B8]')">{{ detailModel.trend }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 模型介绍 -->
+            <div class="px-5 py-4 border-b border-[#252A3A]">
+              <p class="text-[10px] font-mono text-[#64748B] uppercase tracking-widest mb-2">模型介绍</p>
+              <p class="text-[13px] text-[#B4BAC9] leading-relaxed">{{ detailModel.desc }}</p>
+            </div>
+
+            <!-- 业绩指标 (仅当有数据时展示) -->
+            <div v-if="detailModel.annualizedReturn" class="px-5 py-4 border-b border-[#252A3A]">
+              <p class="text-[10px] font-mono text-[#64748B] uppercase tracking-widest mb-3">近12月回测业绩</p>
+              <div class="grid grid-cols-3 gap-3">
+                <div class="bg-[#161922] border border-[#252A3A] rounded p-3">
+                  <p class="text-[10px] font-mono text-[#64748B] mb-1">年化收益</p>
+                  <p class="text-[18px] font-mono font-bold text-[#E8ECF4]">{{ detailModel.annualizedReturn }}</p>
+                </div>
+                <div class="bg-[#161922] border border-[#252A3A] rounded p-3">
+                  <p class="text-[10px] font-mono text-[#64748B] mb-1">模型超额收益</p>
+                  <p :class="cn('text-[18px] font-mono font-bold', detailModel.excessReturn?.startsWith('+') ? 'text-[#F04864]' : 'text-[#00C9A7]')">{{ detailModel.excessReturn }}</p>
+                </div>
+                <div class="bg-[#161922] border border-[#252A3A] rounded p-3">
+                  <p class="text-[10px] font-mono text-[#64748B] mb-1">最大回撤</p>
+                  <p class="text-[18px] font-mono font-bold text-[#94A3B8]">{{ detailModel.maxDrawdown }}</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- 调用历史明细 -->
+            <div class="px-5 py-4">
+              <p class="text-[10px] font-mono text-[#64748B] uppercase tracking-widest mb-3">近期调用明细</p>
+              <div class="bg-[#161922] border border-[#252A3A] rounded overflow-hidden">
+                <table class="w-full">
+                  <thead>
+                    <tr class="border-b border-[#252A3A] bg-[#202431]">
+                      <th class="px-3 py-2 text-left text-[10px] font-normal text-[#64748B] font-mono uppercase">调用时间</th>
+                      <th class="px-3 py-2 text-left text-[10px] font-normal text-[#64748B] font-mono uppercase">调用方</th>
+                      <th class="px-3 py-2 text-left text-[10px] font-normal text-[#64748B] font-mono uppercase">所属部门</th>
+                      <th class="px-3 py-2 text-right text-[10px] font-normal text-[#64748B] font-mono uppercase">耗时</th>
+                      <th class="px-3 py-2 text-right text-[10px] font-normal text-[#64748B] font-mono uppercase">状态</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-[#252A3A]">
+                    <tr v-for="(row, i) in detailUsageHistory" :key="i" class="hover:bg-[#202431]/60 transition-colors">
+                      <td class="px-3 py-2 text-[12px] font-mono text-[#94A3B8]">{{ row.date }}</td>
+                      <td class="px-3 py-2 text-[12px] text-[#B4BAC9]">{{ row.user }}</td>
+                      <td class="px-3 py-2 text-[12px] text-[#94A3B8]">{{ row.dept }}</td>
+                      <td class="px-3 py-2 text-[12px] font-mono text-[#94A3B8] text-right">{{ row.duration }}</td>
+                      <td class="px-3 py-2 text-right">
+                        <span class="text-[10px] font-mono text-[#00C9A7] bg-[#00C9A7]/8 border border-[#00C9A7]/20 px-1.5 py-px rounded">SUCCESS</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Footer -->
+          <div class="px-5 py-3 border-t border-[#252A3A] bg-[#202431] flex items-center justify-end space-x-2 shrink-0">
+            <button
+              @click="showDetailModal = false"
+              class="px-3 py-1.5 rounded text-[13px] text-[#B4BAC9] hover:text-[#E8ECF4] border border-[#2E3348] hover:border-[#3E4660] transition-colors"
+            >关闭</button>
+            <button
+              @click="handleSelectModel(detailModel); showLeaderboard = false; showDetailModal = false"
+              class="px-4 py-1.5 bg-[#3B9EFF] hover:bg-[#5CB3FF] text-white text-[13px] font-semibold rounded transition-colors flex items-center space-x-1.5"
+            >
+              <VideoPlay class="w-3.5 h-3.5" /><span>应用此模型</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
 
     <!-- ═══ APPLY WEIGHTS CONFIRMATION MODAL ═══ -->
     <Transition
@@ -1291,35 +1482,114 @@ const MOCK_BL_WEIGHTS: Record<string, number> = {
   '518880.SH': 0.0,
 };
 
+// ── Model Detail Modal ────────────────────────────────────────────────────────
+interface UsageRecord { date: string; user: string; dept: string; duration: string; }
+
+const MOCK_USAGE_HISTORY: Record<string, UsageRecord[]> = {
+  bl: [
+    { date: '2026-05-25 14:32', user: '陈建国', dept: '固收投资部', duration: '1.24s' },
+    { date: '2026-05-24 10:08', user: '林佳慧', dept: '投委会办公室', duration: '0.98s' },
+    { date: '2026-05-22 16:45', user: '王伟明', dept: '资产配置部', duration: '1.51s' },
+    { date: '2026-05-20 09:17', user: '张天宇', dept: '权益投资部', duration: '1.12s' },
+    { date: '2026-05-18 15:30', user: '赵晓丹', dept: '投管部', duration: '0.87s' },
+    { date: '2026-05-16 11:22', user: '刘洋', dept: '固收投资部', duration: '1.39s' },
+  ],
+  rp: [
+    { date: '2026-05-25 09:55', user: '吴思远', dept: '资产配置部', duration: '0.76s' },
+    { date: '2026-05-23 14:10', user: '孙雅婷', dept: '投管部', duration: '0.82s' },
+    { date: '2026-05-21 10:33', user: '李明浩', dept: '固收投资部', duration: '0.91s' },
+    { date: '2026-05-19 16:07', user: '王晓雪', dept: '投委会办公室', duration: '0.68s' },
+    { date: '2026-05-17 08:45', user: '陈建国', dept: '固收投资部', duration: '0.74s' },
+  ],
+  mc: [
+    { date: '2026-05-24 15:22', user: '郑浩然', dept: '量化研究部', duration: '3.47s' },
+    { date: '2026-05-22 11:05', user: '黄雨欣', dept: '资产配置部', duration: '4.12s' },
+    { date: '2026-05-19 14:38', user: '张天宇', dept: '权益投资部', duration: '3.89s' },
+    { date: '2026-05-15 09:30', user: '刘思佳', dept: '投管部', duration: '3.65s' },
+  ],
+  mf: [
+    { date: '2026-05-25 16:48', user: '周晨曦', dept: '权益投资部', duration: '2.15s' },
+    { date: '2026-05-25 10:12', user: '林佳慧', dept: '量化研究部', duration: '1.98s' },
+    { date: '2026-05-24 14:30', user: '赵云飞', dept: '权益投资部', duration: '2.34s' },
+    { date: '2026-05-23 09:05', user: '吴思远', dept: '资产配置部', duration: '2.07s' },
+    { date: '2026-05-22 15:55', user: '张亦凡', dept: '量化研究部', duration: '1.87s' },
+    { date: '2026-05-21 11:40', user: '孙雅婷', dept: '投管部', duration: '2.21s' },
+  ],
+  barra: [
+    { date: '2026-05-25 13:20', user: '徐嘉明', dept: '量化研究部', duration: '1.66s' },
+    { date: '2026-05-24 09:48', user: '周晨曦', dept: '权益投资部', duration: '1.74s' },
+    { date: '2026-05-23 16:15', user: '林佳慧', dept: '量化研究部', duration: '1.55s' },
+    { date: '2026-05-21 10:30', user: '陈锐', dept: '投管部', duration: '1.82s' },
+    { date: '2026-05-20 14:22', user: '王伟明', dept: '资产配置部', duration: '1.61s' },
+  ],
+  'shared-py': [
+    { date: '2026-05-25 11:33', user: '张经理', dept: '权益投资部', duration: '0.54s' },
+    { date: '2026-05-23 15:07', user: '刘洋', dept: '量化研究部', duration: '0.48s' },
+    { date: '2026-05-20 09:22', user: '赵云飞', dept: '权益投资部', duration: '0.61s' },
+  ],
+  'alpha-mind': [
+    { date: '2026-05-25 17:05', user: '赵晓丹', dept: '创新业务部', duration: '2.28s' },
+    { date: '2026-05-25 14:11', user: '吴思远', dept: '资产配置部', duration: '1.94s' },
+    { date: '2026-05-25 09:38', user: '林佳慧', dept: '投委会办公室', duration: '2.44s' },
+    { date: '2026-05-24 16:52', user: '郑浩然', dept: '量化研究部', duration: '2.11s' },
+    { date: '2026-05-24 13:27', user: '陈建国', dept: '固收投资部', duration: '1.87s' },
+    { date: '2026-05-23 11:14', user: '周晨曦', dept: '权益投资部', duration: '2.33s' },
+  ],
+};
+
+const showDetailModal = ref(false);
+const detailModel    = ref<ModelItem | null>(null);
+
+const detailUsageHistory = computed(() =>
+  detailModel.value ? (MOCK_USAGE_HISTORY[detailModel.value.id] ?? []) : []
+);
+
+function openDetailModal(model: ModelItem) {
+  detailModel.value = model;
+  showDetailModal.value = true;
+}
+
+/** TAA macro-category weights — keys match productTaa in TerminalDashboard */
+const MOCK_TAA_WEIGHTS: Record<string, number> = {
+  '红利':      16.0,
+  '港股':       6.0,
+  '境内固收':  63.0,
+  '境外固收':   5.0,
+  'REITS':     5.0,
+  '黄金':      5.0,
+};
+
 // ── State ────────────────────────────────────────────────────────────────────
 interface ModelItem {
   id: string; name: string; type: string; source: string; author: string;
   department: string; updateTime: string; desc: string; visibility: string;
   usageCount: number; trend: string; sharedWith: string[];
+  annualizedReturn?: string; excessReturn?: string; maxDrawdown?: string;
+  subType?: 'alloc' | 'strategy';
 }
 
 const categories = reactive([
   {
     title: '我的模型', action: 'upload', icon: EditPen,
     models: [
-      { id: 'custom-py', name: 'Custom_Strategy_v2.py', type: 'custom', source: 'self', author: '当前用户', department: '固收+投资部', updateTime: '2026-03-25', desc: '用户自定义Python策略', visibility: 'private', usageCount: 0, trend: '0%', sharedWith: [] },
-      { id: 'shared-py', name: 'Tech_Momentum_Factor.py', type: 'custom', source: 'shared', author: '张经理', department: '权益投资部', updateTime: '2026-03-20', desc: '科技股动量因子挖掘', visibility: 'dept', usageCount: 342, trend: '+5%', sharedWith: [] },
-      { id: 'alpha-mind', name: '✨ Alpha Mind (AI 生成)', type: 'ai', source: 'system', author: 'AI 实验室', department: '创新业务部', updateTime: '2026-03-24', desc: '用自然语言描述策略，AI 自动生成资配模型或策略模型', visibility: 'corp', usageCount: 28900, trend: '+45%', sharedWith: [] },
+      { id: 'custom-py', name: 'Custom_Strategy_v2.py', type: 'custom', source: 'self', author: '当前用户', department: '固收+投资部', updateTime: '2026-03-25', desc: '用户自定义Python策略', visibility: 'private', usageCount: 0, trend: '0%', sharedWith: [], annualizedReturn: undefined, excessReturn: undefined, maxDrawdown: undefined },
+      { id: 'shared-py', name: 'Tech_Momentum_Factor.py', type: 'custom', source: 'shared', author: '张经理', department: '权益投资部', updateTime: '2026-03-20', desc: '科技股动量因子挖掘', visibility: 'dept', usageCount: 342, trend: '+5%', sharedWith: [], annualizedReturn: '14.53%', excessReturn: '+6.82%', maxDrawdown: '12.40%' },
+      { id: 'alpha-mind', name: '✨ Alpha Mind (AI 生成)', type: 'ai', source: 'system', author: 'AI 实验室', department: '创新业务部', updateTime: '2026-03-24', desc: '用自然语言描述策略，AI 自动生成资配模型或策略模型', visibility: 'corp', usageCount: 28900, trend: '+45%', sharedWith: [], annualizedReturn: '8.91%', excessReturn: '+2.44%', maxDrawdown: '5.67%' },
     ] as ModelItem[]
   },
   {
     title: '经典资配模型', action: undefined, icon: Files,
     models: [
-      { id: 'bl', name: 'Black-Litterman (BL) 模型', type: 'classic', source: 'system', author: '系统内置', department: '投管部', updateTime: '2026-01-10', desc: '结合主观观点的资产配置', visibility: 'corp', usageCount: 12500, trend: '+15%', sharedWith: [] },
-      { id: 'rp', name: '风险评价 (Risk Parity)', type: 'classic', source: 'system', author: '系统内置', department: '投管部', updateTime: '2026-01-15', desc: '基于风险贡献相等的资产配置', visibility: 'corp', usageCount: 8900, trend: '+8%', sharedWith: [] },
-      { id: 'mc', name: '蒙特卡洛模拟算法', type: 'classic', source: 'system', author: '系统内置', department: '投管部', updateTime: '2026-02-01', desc: '基于随机模拟的资产路径预测', visibility: 'corp', usageCount: 5600, trend: '-2%', sharedWith: [] },
+      { id: 'bl', name: 'Black-Litterman (BL) 模型', type: 'classic', subType: 'alloc', source: 'system', author: '系统内置', department: '投管部', updateTime: '2026-01-10', desc: '结合投资者主观观点与市场均衡收益，通过贝叶斯框架融合两类信息，输出最优大类资产配置权重。适用于有明确市场观点的主动资产配置场景。', visibility: 'corp', usageCount: 12500, trend: '+15%', sharedWith: [], annualizedReturn: '7.82%', excessReturn: '+2.15%', maxDrawdown: '3.48%' },
+      { id: 'rp', name: '风险评价 (Risk Parity)', type: 'classic', subType: 'alloc', source: 'system', author: '系统内置', department: '投管部', updateTime: '2026-01-15', desc: '以各资产对组合总风险的贡献相等为约束，构建低回撤、高分散度的均衡配置组合。适用于保守型产品与绝对收益策略。', visibility: 'corp', usageCount: 8900, trend: '+8%', sharedWith: [], annualizedReturn: '5.93%', excessReturn: '+0.86%', maxDrawdown: '1.24%' },
+      { id: 'mc', name: '蒙特卡洛模拟算法', type: 'classic', subType: 'alloc', source: 'system', author: '系统内置', department: '投管部', updateTime: '2026-02-01', desc: '通过大量随机路径模拟资产价格演化，统计有效前沿上的最优权重组合。适用于尾部风险评估与非正态分布场景。', visibility: 'corp', usageCount: 5600, trend: '-2%', sharedWith: [], annualizedReturn: '9.45%', excessReturn: '+3.28%', maxDrawdown: '6.73%' },
     ] as ModelItem[]
   },
   {
     title: '经典策略模型', action: undefined, icon: Grid,
     models: [
-      { id: 'mf', name: '多因子模型', type: 'classic', source: 'system', author: '系统内置', department: '投管部', updateTime: '2026-02-20', desc: '基于多因子打分的选股/选债', visibility: 'corp', usageCount: 15200, trend: '+22%', sharedWith: [] },
-      { id: 'barra', name: 'Barra 多因子模型', type: 'classic', source: 'system', author: '系统内置', department: '投管部', updateTime: '2026-03-01', desc: '基于Barra风险模型的组合优化', visibility: 'corp', usageCount: 11000, trend: '+12%', sharedWith: [] },
+      { id: 'mf', name: '多因子模型', type: 'classic', subType: 'strategy', source: 'system', author: '系统内置', department: '投管部', updateTime: '2026-02-20', desc: '通过量化打分体系（价值、质量、动量、低波等因子）对股票/债券进行综合评分排序，输出权重建议。适用于主动选股与行业轮动。', visibility: 'corp', usageCount: 15200, trend: '+22%', sharedWith: [], annualizedReturn: '11.20%', excessReturn: '+4.67%', maxDrawdown: '8.95%' },
+      { id: 'barra', name: 'Barra 多因子模型', type: 'classic', subType: 'strategy', source: 'system', author: '系统内置', department: '投管部', updateTime: '2026-03-01', desc: '基于 Barra 风险因子体系（行业、风格、市场）对组合进行风险归因与优化，实现因子暴露可控的精细化组合管理。', visibility: 'corp', usageCount: 11000, trend: '+12%', sharedWith: [], annualizedReturn: '9.87%', excessReturn: '+3.41%', maxDrawdown: '7.12%' },
     ] as ModelItem[]
   },
 ]);
@@ -1583,10 +1853,12 @@ function confirmApplyWeights() {
   if (isApplying.value) return;
   isApplying.value = true;
   setTimeout(() => {
+    const isTaa = sharedIntentState.callerTab === 'taa';
     sharedIntentState.pendingModelWeights = {
       modelId:   selectedModel.value?.id   ?? 'bl',
       modelName: selectedModel.value?.name ?? 'Black-Litterman (BL) 模型',
-      weights: { ...MOCK_BL_WEIGHTS },
+      weights:   isTaa ? { ...MOCK_TAA_WEIGHTS } : { ...MOCK_BL_WEIGHTS },
+      targetTab: isTaa ? 'taa' : 'intent',
     };
     sharedIntentState.applyTimestamp = Date.now();
 
@@ -1633,10 +1905,12 @@ function confirmPushAndReturn() {
   if (isPushingBack.value) return;
   isPushingBack.value = true;
   setTimeout(() => {
+    const isTaa = sharedIntentState.callerTab === 'taa';
     sharedIntentState.pendingModelWeights = {
       modelId:   selectedModel.value?.id   ?? 'bl',
       modelName: selectedModel.value?.name ?? 'Black-Litterman (BL) 模型',
-      weights: { ...MOCK_BL_WEIGHTS },
+      weights:   isTaa ? { ...MOCK_TAA_WEIGHTS } : { ...MOCK_BL_WEIGHTS },
+      targetTab: isTaa ? 'taa' : 'intent',
     };
     sharedIntentState.applyTimestamp = Date.now();
 

@@ -5,6 +5,7 @@ from scipy.optimize import minimize
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from config import *
+from report_generator import generate_report
 
 class BlackLittermanModel():
     def __init__(self, meeting_date):
@@ -21,6 +22,7 @@ class BlackLittermanModel():
         self.liquidity_config = LIQUIDITY_CONFIG
 
         self.lambda_ = self.model_config["lambda_"]
+        self.fixed_income_band = FIXED_INCOME_BAND
 
 
     def resolve_dates(self, date_config):
@@ -62,22 +64,8 @@ class BlackLittermanModel():
         dates = pd.bdate_range(hist_start, hist_end)
         n = len(dates)
 
-        # sim_params = {
-        #     "固收-存单": {"mu": 0.023, "vol": 0.008},
-        #     "固收-信用": {"mu": 0.031, "vol": 0.016},
-        #     "固收-利率10Y": {"mu": 0.042, "vol": 0.031},
-        #     "固收-利率30Y": {"mu": 0.052, "vol": 0.049},
-        #     "含权-转债": {"mu": 0.061, "vol": 0.063},
-        #     "含权-二级债基": {"mu": 0.058, "vol": 0.052},
-        #     "含权-红利": {"mu": 0.082, "vol": 0.182},
-        #     "含权-偏股混": {"mu": 0.093, "vol": 0.213},
-        #     "含权-恒生科技": {"mu": 0.112, "vol": 0.301},
-        #     "另类-黄金": {"mu": 0.152, "vol": 0.152},
-        # }
-
-
         sim_params = {
-            "固收-存单": {"mu": 0.031, "vol": 0.016},
+            "固收-存单": {"mu": 0.023, "vol": 0.008},
             "固收-信用": {"mu": 0.031, "vol": 0.016},
             "固收-利率10Y": {"mu": 0.042, "vol": 0.031},
             "固收-利率30Y": {"mu": 0.052, "vol": 0.049},
@@ -88,6 +76,20 @@ class BlackLittermanModel():
             "含权-恒生科技": {"mu": 0.112, "vol": 0.301},
             "另类-黄金": {"mu": 0.152, "vol": 0.152},
         }
+
+
+        # sim_params = {
+        #     "固收-存单": {"mu": 0.031, "vol": 0.016},
+        #     "固收-信用": {"mu": 0.031, "vol": 0.016},
+        #     "固收-利率10Y": {"mu": 0.042, "vol": 0.031},
+        #     "固收-利率30Y": {"mu": 0.052, "vol": 0.049},
+        #     "含权-转债": {"mu": 0.061, "vol": 0.063},
+        #     "含权-二级债基": {"mu": 0.058, "vol": 0.052},
+        #     "含权-红利": {"mu": 0.082, "vol": 0.182},
+        #     "含权-偏股混": {"mu": 0.093, "vol": 0.213},
+        #     "含权-恒生科技": {"mu": 0.112, "vol": 0.301},
+        #     "另类-黄金": {"mu": 0.152, "vol": 0.152},
+        # }
 
 
         prices = {}
@@ -127,13 +129,9 @@ class BlackLittermanModel():
         for name, cfg in asset_config.items():
             if cfg["asset_type"] != "fixed_income":
                 continue
-            if cfg["duration_method"] == "constant":
-                durations[name] = cfg["duration_value"]
-                print(f"  {name}: {cfg['duration_value']:.2f}年（配置固定值）")
-            elif cfg["duration_method"] == "wind":
-                d = simulated.get(name, 3.0)
-                durations[name] = d
-                print(f"  {name}: {d:.2f}年（模拟，请替换为Wind调用）")
+            d = cfg["yield_curve_term"]
+            durations[name] = d
+            print(f"  {name}: {d:.2f}年（配置值）")
 
         return durations
 
@@ -321,14 +319,20 @@ class BlackLittermanModel():
 
         names = list(asset_config.keys())
         N = len(names)
-        P = np.eye(N)
+        P_rows = []
         Q_list = []
         std_list = []
+        view_asset_indices = []
 
-        for name in names:
+        for i, name in enumerate(names):
             cfg = asset_config[name]
-            vote_dict = votes_config[name]
             ranges = score_range_config[name]
+            vote_dict = votes_config.get(name, {})
+            if not vote_dict:
+                print(f"  {name}")
+                print(f"    [无投票] 跳过，完全依赖先验")
+                continue
+            view_asset_indices.append(i)
             total_votes = sum(vote_dict.values())
 
             # 加权平均原始变动值
@@ -360,19 +364,27 @@ class BlackLittermanModel():
 
             std_val = np.std(ret_arr)
             print(f"    委员分歧std = {std_val:.4f}")
+            p_row = np.zeros(N)
+            p_row[i] = 1.0
+            P_rows.append(p_row)          # ← 新增：把这行view加入P
             Q_list.append(Q_val)
             std_list.append(std_val)
 
+        P = np.array(P_rows)  # shape: (K, N)，K <= N
         Q_vec = np.array(Q_list)
         std_arr = np.array(std_list)
 
         # Ω：He-Litterman 基础 × 分歧调整
         Omega_base = tau * np.diag(P @ Sigma @ P.T)
-        disagreement_scale = 1 + std_arr / (np.abs(Q_vec) + 1e-6)
+        # disagreement_scale = 1 + std_arr / (np.abs(Q_vec) + 1e-6)
+        asset_vols = np.sqrt(np.diag(Sigma))  # 各资产年化波动率
+        view_vols = asset_vols[view_asset_indices]  # ← 新增：只取有观点资产的波动率
+        disagreement_scale = 1 + std_arr / (view_vols + 1e-6)
         Omega = np.diag(Omega_base * disagreement_scale)
 
+        view_names = [names[i] for i in view_asset_indices]
         print(f"\n  Ω 对角线（越大=越不信任）：")
-        for name, om in zip(names, np.diag(Omega)):
+        for name, om in zip(view_names, np.diag(Omega)):
             print(f"    {name}: {om:.6f}")
 
         return P, Q_vec, Omega
@@ -406,12 +418,19 @@ class BlackLittermanModel():
         )
 
         names = list(asset_config.keys())
+        # 构建 name→Q 的映射（P每行只有一个1，找出对应资产索引）
+        view_q_map = {}
+        for k in range(len(Q)):
+            asset_idx = int(np.argmax(P[k]))
+            view_q_map[asset_idx] = Q[k]
+
         print(f"\n  {'大类':<15} {'均衡Π':>9} {'观点Q':>9} {'后验μ_BL':>10}")
         print(f"  {'-' * 46}")
         for i, name in enumerate(names):
+            q_str = f"{view_q_map[i] * 100:8.2f}%" if i in view_q_map else "  (无观点)"
             print(f"  {name:<15} "
                   f"{Pi[i] * 100:>8.2f}%  "
-                  f"{Q[i] * 100:>8.2f}%  "
+                  f"{q_str}  "
                   f"{mu_BL[i] * 100:>8.2f}%")
 
         return mu_BL, Sigma_BL
@@ -576,6 +595,19 @@ class BlackLittermanModel():
         # ── 模型计算(Step 2：w_mkt（SAA + 风险平价）)
         w_mkt = self.calc_market_weights(self.asset_config, self.saa_config, Sigma, self.liquidity_config["weight"])
 
+        # ── 动态生成固收约束：基于 w_mkt ± FIXED_INCOME_BAND
+        names = list(self.asset_config.keys())
+        dynamic_constraints = dict(self.weight_constraints)
+        for i, (name, cfg) in enumerate(self.asset_config.items()):
+            if cfg.get("price_source") == "yield_curve":
+                rp_w = w_mkt[i]
+                band = self.fixed_income_band
+                dynamic_constraints[name] = {
+                    "lower": max(0.0, rp_w * (1 - band)),
+                    "upper": rp_w * (1 + band),
+                }
+                print(f"  [动态约束] {name}: [{rp_w*(1-band)*100:.2f}%, {rp_w*(1+band)*100:.2f}%]（w_mkt={rp_w*100:.2f}%）")
+
         # ── 模型计算(Step 3：均衡先验 Π）
         Pi = self.calc_equilibrium(Sigma, w_mkt, self.lambda_, self.asset_config)
 
@@ -586,11 +618,41 @@ class BlackLittermanModel():
         mu_BL, Sigma_BL = self.calc_mu_BL(Pi, P, Q, Omega, Sigma, tau, self.asset_config)
 
         # ── 模型计算(Step 6：优化)
-        w_star = self.optimize_portfolio(mu_BL, Sigma, self.lambda_, self.asset_config, self.weight_constraints, self.model_config, liquidity_weight=self.liquidity_config["weight"], group_constraints=self.group_constraints)
+        w_star = self.optimize_portfolio(mu_BL, Sigma, self.lambda_, self.asset_config, dynamic_constraints, self.model_config, liquidity_weight=self.liquidity_config["weight"], group_constraints=self.group_constraints)
 
         # ── 输出
         result_df = self.print_results(w_star, w_mkt, mu_BL, Sigma, self.asset_config, self.liquidity_config)
 
+        # ── 保存结果文件
+        os.makedirs("reports", exist_ok=True)
+        meeting_date = self.date_config["meeting_date"]
+        result_df.to_csv(f"reports/BL_weights_{meeting_date}.csv", index=False, encoding="utf-8-sig")
+        print(f"[结果] 权重已保存：reports/BL_weights_{meeting_date}.csv")
+
+        # ── 生成 HTML 报告
+        port_ret = w_star @ mu_BL
+        port_vol = np.sqrt(w_star @ Sigma @ w_star)
+        sharpe   = port_ret / port_vol
+        generate_report({
+            "meeting_date":        self.date_config["meeting_date"],
+            "hist_start":          hist_start,
+            "hist_end":            hist_end,
+            "names":               names,
+            "asset_config":        self.asset_config,
+            "w_mkt":               w_mkt,
+            "Pi":                  Pi,
+            "Q":                   Q,
+            "P":                   P,
+            "mu_BL":               mu_BL,
+            "w_star":              w_star,
+            "votes_config":        self.votes_config,
+            "dynamic_constraints": dynamic_constraints,
+            "group_constraints":   self.group_constraints,
+            "port_ret":            port_ret,
+            "port_vol":            port_vol,
+            "sharpe":              sharpe,
+            "liquidity_config":    self.liquidity_config,
+        })
 
 
 if __name__ == '__main__':

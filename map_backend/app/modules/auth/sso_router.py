@@ -9,7 +9,7 @@ from starlette.status import HTTP_302_FOUND
 
 from app.core.config import settings
 from app.core.security import create_access_token
-from app.dependencies import DBSession
+from app.dependencies import OptionalDB
 from app.modules.auth import services
 
 router = APIRouter()
@@ -28,7 +28,7 @@ router = APIRouter()
 )
 async def root_or_sso_callback(
     request: Request,
-    db: DBSession,
+    db: OptionalDB,
     sso_token_id: str | None = Query(
         default=None,
         alias="ssoTokenId",
@@ -58,6 +58,12 @@ async def root_or_sso_callback(
         }
 
     # ── 分支 2：携带 ssoTokenId，走 SSO 回调流程 ───────────────────────────────
+    if db is None:
+        return RedirectResponse(
+            url=f"{settings.SSO_LOGIN_REDIRECT_URL}?error=service_unavailable",
+            status_code=HTTP_302_FOUND,
+        )
+
     # 1. 校验门户 token，获取用户信息
     portal_info = await services.validate_sso_token(sso_token_id)
 

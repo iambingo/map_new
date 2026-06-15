@@ -9,13 +9,20 @@
         </p>
       </div>
       <div class="flex space-x-2">
-        <button class="bg-[#1A1E2B] border border-[#3E4660] text-[#B4BAC9] hover:text-white px-3 py-1.5 rounded text-[13px] font-mono transition-colors">EXPORT PDF</button>
-        <button class="bg-[#1A1E2B] border border-[#3E4660] text-[#B4BAC9] hover:text-white px-3 py-1.5 rounded text-[13px] font-mono transition-colors">REFRESH</button>
+        <button disabled class="bg-[#1A1E2B] border border-[#3E4660] text-[#B4BAC9] hover:text-white px-3 py-1.5 rounded text-[13px] font-mono transition-colors opacity-40 cursor-not-allowed" title="即将推出">EXPORT PDF</button>
+        <button disabled class="bg-[#1A1E2B] border border-[#3E4660] text-[#B4BAC9] hover:text-white px-3 py-1.5 rounded text-[13px] font-mono transition-colors opacity-40 cursor-not-allowed" title="即将推出">REFRESH</button>
       </div>
     </div>
 
     <!-- KPI Ribbon -->
-    <div class="grid grid-cols-4 gap-4 shrink-0">
+    <div v-if="loading" class="grid grid-cols-4 gap-4 shrink-0">
+      <div v-for="i in 4" :key="i" class="bg-[#161922] border border-[#2E3348] rounded-lg p-4">
+        <div class="am-skeleton h-3 w-24 mb-3"></div>
+        <div class="am-skeleton h-7 w-20 mb-2"></div>
+        <div class="am-skeleton h-4 w-28"></div>
+      </div>
+    </div>
+    <div v-else class="grid grid-cols-4 gap-4 shrink-0">
       <div class="bg-[#161922] border border-[#2E3348] rounded-lg p-4 relative overflow-hidden group hover:border-[#4A5568] transition-colors">
         <div class="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-[#1A1E2B] to-transparent opacity-50" />
         <h3 class="text-[13px] font-bold text-[#B4BAC9] uppercase tracking-wider mb-1">总管理规模 (AUM)</h3>
@@ -59,8 +66,19 @@
       </div>
     </div>
 
+    <!-- Middle Row: Chart + Treemap (skeleton) -->
+    <div v-if="loading" class="grid grid-cols-3 gap-4 h-[320px] shrink-0">
+      <div class="col-span-2 bg-[#161922] border border-[#2E3348] rounded-lg p-4 flex flex-col">
+        <div class="am-skeleton h-4 w-48 mb-4"></div>
+        <div class="flex-1 am-skeleton"></div>
+      </div>
+      <div class="col-span-1 bg-[#161922] border border-[#2E3348] rounded-lg p-4 flex flex-col">
+        <div class="am-skeleton h-4 w-40 mb-4"></div>
+        <div class="flex-1 am-skeleton"></div>
+      </div>
+    </div>
     <!-- Middle Row: Chart + Treemap -->
-    <div class="grid grid-cols-3 gap-4 h-[320px] shrink-0">
+    <div v-else class="grid grid-cols-3 gap-4 h-[320px] shrink-0">
       <!-- Performance Area Chart -->
       <div class="col-span-2 bg-[#161922] border border-[#2E3348] rounded-lg p-4 flex flex-col">
         <div class="flex justify-between items-center mb-4 shrink-0">
@@ -190,18 +208,18 @@
       <div class="bg-[#161922] border border-[#2E3348] rounded-lg p-4 flex flex-col">
         <h3 class="am-title-l2 mb-4 uppercase tracking-wider shrink-0"><div class="am-title-bar"></div>高管行动与风控雷达</h3>
         <div class="flex-1 flex flex-col space-y-4 min-h-0">
-          <div class="bg-blue-900/20 border border-blue-500/50 rounded-lg p-3 shrink-0 cursor-pointer hover:bg-blue-900/30 transition-colors group">
+          <div class="bg-blue-900/20 border border-blue-500/50 rounded-lg p-3 shrink-0 cursor-default">
             <div class="flex items-start justify-between">
               <div class="flex items-start">
                 <div class="bg-blue-500/20 p-1.5 rounded mr-3 mt-0.5">
                   <Lightning class="w-4 h-4 text-blue-400" />
                 </div>
                 <div>
-                  <h4 class="text-[13px] font-bold text-blue-100 mb-1 group-hover:text-white transition-colors">2026 Q2 战术配置投委会投票进行中</h4>
+                  <h4 class="text-[13px] font-bold text-blue-100 mb-1">2026 Q2 战术配置投委会投票进行中</h4>
                   <p class="text-[13px] text-blue-300/70">需您在今日 18:00 前完成最终决议投票。</p>
                 </div>
               </div>
-              <ArrowRight class="w-4 h-4 text-blue-400 group-hover:translate-x-1 transition-transform" />
+              <ArrowRight class="w-4 h-4 text-blue-400" />
             </div>
           </div>
 
@@ -234,7 +252,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import {
   TrendCharts, DataLine, WarningFilled, Aim, Warning,
   ArrowRight, Histogram, PieChart, ArrowUp, ArrowDown,
@@ -249,6 +267,8 @@ import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/compon
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent]);
 
 const drilledDept = ref<string | null>(null);
+const loading = ref(true);
+onMounted(() => setTimeout(() => loading.value = false, 800));
 
 const performanceData = [
   { month: '25/10', company: 2.1, benchmark: 1.5 },

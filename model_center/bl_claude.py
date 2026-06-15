@@ -46,6 +46,13 @@ MODEL_CONFIG = {
     "weight_upper": 1.0,     # 全局默认上限（被单资产约束覆盖）
 }
 
+# ── 1.3 报告配置 ────────────────────────────────────────────
+REPORT_CONFIG = {
+    # 增配/减配阈值：w* 相对 w_mkt 的变化比例超过该值即标记
+    # 例：0.50 表示权重涨幅 ≥50% 为增配，跌幅 ≥50% 为减配
+    "action_threshold": 0.50,
+}
+
 # ── 1.3 流动性配置 ──────────────────────────────────────────
 # 流动性不进 BL，直接锁定，其余部分归一化后进 BL
 LIQUIDITY_CONFIG = {
@@ -225,7 +232,7 @@ SCORE_RANGE_CONFIG = {
 
 # ── 1.8 本次投委会投票 ───────────────────────────────────────
 VOTES_CONFIG = {
-    "固收-存单":     {3: 8, 4: 1},
+    "固收-存单":     {2: 8, 4: 1},
     "固收-信用":     {3: 6, 4: 3},
     "固收-利率10Y":  {3: 8, 4: 1},
     "固收-利率30Y":  {3: 7, 4: 2, 5: 1},
@@ -233,7 +240,7 @@ VOTES_CONFIG = {
     "含权-二级债基": {3: 8, 4: 2},
     "含权-红利":     {3: 6, 4: 4},
     "含权-偏股混":   {2: 1, 3: 5, 4: 3},
-    "含权-恒生科技": {2: 2, 3: 2, 4: 6},
+    # "含权-恒生科技": {2: 2, 3: 2, 4: 6},   # 本期无投票，依赖先验
     "另类-黄金":     {3: 2, 4: 8},
 }
 
@@ -349,6 +356,51 @@ def fetch_durations(asset_config: dict,
             print(f"  {name}: {d:.2f}年（模拟，请替换为Wind调用）")
 
     return durations
+
+
+# [可替换] 替换为 Wind 实时拉取 YTM + 历史收益率均值
+def fetch_expected_returns(asset_config: dict,
+                           prices_df: pd.DataFrame) -> dict:
+    """
+    计算各资产预期年化收益率：
+      - 固收类（fixed_income）：使用当前 YTM（到期收益率）
+      - 其他类：使用 prices_df 覆盖窗口（3年）的历史收益率年化均值
+
+    返回：dict {资产名: 预期年化收益率（小数）}
+
+    [可替换]
+    固收 YTM 替换为：
+        import WindPy as w
+        w.start()
+        data = w.wss(wind_code, "ytm", f"tradeDate={meeting_date}")
+        ytm = data.Data[0][0] / 100   # Wind 返回百分比
+    """
+    print("[数据] 计算预期年化收益率...")
+
+    # ── Mock YTM（固收，后续替换为 Wind 实时数据）
+    mock_ytm = {
+        "固收-存单":    0.018,   # 1年期存单 ~1.8%
+        "固收-信用":    0.025,   # 信用债 ~2.5%
+        "固收-利率10Y": 0.022,   # 10年国债 ~2.2%
+        "固收-利率30Y": 0.024,   # 30年国债 ~2.4%
+    }
+
+    # ── 历史收益率均值（含权/另类，基于 prices_df 窗口）
+    returns   = prices_df.pct_change().dropna()
+    mu_hist   = (returns.mean() * 252).to_dict()   # 年化均值
+
+    exp_ret = {}
+    for name, cfg in asset_config.items():
+        if cfg["asset_type"] == "fixed_income":
+            ytm = mock_ytm.get(name, 0.02)
+            exp_ret[name] = ytm
+            print(f"  {name:<15} YTM  = {ytm*100:.2f}%（mock，请替换为Wind）")
+        else:
+            mu = mu_hist.get(name, 0.05)
+            exp_ret[name] = mu
+            print(f"  {name:<15} 均值 = {mu*100:.2f}%（{len(returns)}个交易日均值）")
+
+    return exp_ret
 
 
 # ═══════════════════════════════════════════════════════════
@@ -536,19 +588,24 @@ def calc_Q_and_Omega(asset_config: dict,
     """
     print("\n[Step 4] 投委会投票 → P / Q / Ω")
 
-    names   = list(asset_config.keys())
-    N       = len(names)
-    P       = np.eye(N)
-    Q_list  = []
-    std_list= []
+    names        = list(asset_config.keys())
+    N            = len(names)
+    P_rows       = []   # 只包含有投票的资产行
+    Q_list       = []
+    std_list     = []
+    voted_indices = []
 
-    for name in names:
-        cfg         = asset_config[name]
-        vote_dict   = votes_config[name]
+    for i, name in enumerate(names):
+        cfg       = asset_config[name]
+        vote_dict = votes_config.get(name, {})
+
+        if not vote_dict:
+            print(f"  {name}: 无投票，完全依赖先验")
+            continue
+
         ranges      = score_range_config[name]
         total_votes = sum(vote_dict.values())
 
-        # 加权平均原始变动值
         raw_values   = []
         weighted_sum = 0.0
         for score, count in vote_dict.items():
@@ -558,7 +615,6 @@ def calc_Q_and_Omega(asset_config: dict,
             raw_values.extend([mid] * count)
         avg_raw = weighted_sum / total_votes
 
-        # 固收：乘以久期转价格
         if cfg["asset_type"] == "fixed_income":
             duration = durations[name]
             Q_val    = -duration * avg_raw
@@ -577,9 +633,15 @@ def calc_Q_and_Omega(asset_config: dict,
 
         std_val = np.std(ret_arr)
         print(f"    委员分歧std = {std_val:.4f}")
+
+        p_row = np.zeros(N)
+        p_row[i] = 1.0
+        P_rows.append(p_row)
         Q_list.append(Q_val)
         std_list.append(std_val)
+        voted_indices.append(i)
 
+    P       = np.array(P_rows)          # shape: (K, N)，K = 有投票资产数
     Q_vec   = np.array(Q_list)
     std_arr = np.array(std_list)
 
@@ -589,8 +651,8 @@ def calc_Q_and_Omega(asset_config: dict,
     Omega             = np.diag(Omega_base * disagreement_scale)
 
     print(f"\n  Ω 对角线（越大=越不信任）：")
-    for name, om in zip(names, np.diag(Omega)):
-        print(f"    {name}: {om:.6f}")
+    for idx, om in zip(voted_indices, np.diag(Omega)):
+        print(f"    {names[idx]}: {om:.6f}")
 
     return P, Q_vec, Omega
 
@@ -623,12 +685,21 @@ def calc_mu_BL(Pi: np.ndarray,
     )
 
     names = list(asset_config.keys())
+    N = len(names)
+    # 建立 name -> Q 映射（P 只含有投票资产的行）
+    q_map = {}
+    for k in range(len(Q)):
+        asset_idx = int(np.argmax(P[k]))
+        q_map[names[asset_idx]] = Q[k]
+
     print(f"\n  {'大类':<15} {'均衡Π':>9} {'观点Q':>9} {'后验μ_BL':>10}")
     print(f"  {'-'*46}")
     for i, name in enumerate(names):
+        q_display = q_map[name] * 100 if name in q_map else float('nan')
+        q_str = f"{q_display:>8.2f}%" if name in q_map else f"{'先验':>9}"
         print(f"  {name:<15} "
               f"{Pi[i]*100:>8.2f}%  "
-              f"{Q[i]*100:>8.2f}%  "
+              f"{q_str}  "
               f"{mu_BL[i]*100:>8.2f}%")
 
     return mu_BL, Sigma_BL
@@ -810,6 +881,9 @@ def run_bl_model(
 
     # ── Step 1：协方差矩阵
     Sigma, mu_hist, T = calc_covariance(prices_df)
+
+    # ── 预期年化收益率（固收用YTM，其他用历史均值）
+    exp_ret = fetch_expected_returns(asset_config, prices_df)
     tau = model_config["tau"] if model_config["tau"] is not None else (1.0 / T)
     print(f"\n  tau = {tau:.6f}（{'配置值' if model_config['tau'] else '自动 1/T'}）")
 
@@ -845,6 +919,69 @@ def run_bl_model(
         w_star, w_mkt, mu_BL, Sigma,
         asset_config, liquidity_config
     )
+
+    # ── 生成 HTML 报告
+    try:
+        from model_center.report_generator import generate_report
+    except ImportError:
+        from report_generator import generate_report
+
+    port_ret = float(w_star @ mu_BL)
+    port_vol = float(np.sqrt(w_star @ Sigma @ w_star))
+    # 无风险利率：固收-存单当前 YTM（mock，后续替换为 Wind 实时取值）
+    rf       = 0.018   # [可替换] Wind: w.wsd("H11155.CSI", "ytm", meeting_date, meeting_date)
+    sharpe   = (port_ret - rf) / port_vol
+
+    # ── 最大回撤（基于历史窗口内的组合收益率序列，从1累乘得净值）
+    names_list_dd = list(asset_config.keys())
+    port_returns  = prices_df[names_list_dd].pct_change().dropna() @ w_star
+    port_nav      = (1 + port_returns).cumprod()
+    rolling_max   = port_nav.cummax()
+    drawdowns     = port_nav / rolling_max - 1
+    max_drawdown  = float(drawdowns.min())
+
+    # ── 基于 exp_ret 的组合预期收益（固收用YTM，其他用历史均值）
+    names_list    = list(asset_config.keys())
+    exp_ret_vec   = np.array([exp_ret[n] for n in names_list])
+    exp_port_ret  = float(w_star @ exp_ret_vec)
+    exp_port_vol  = port_vol   # 波动率用同一个 Sigma 计算
+    exp_port_sharpe = (exp_port_ret - rf) / exp_port_vol
+
+    report_data = {
+        "meeting_date":        date_config["meeting_date"],
+        "hist_start":          hist_start,
+        "hist_end":            hist_end,
+        "names":               list(asset_config.keys()),
+        "asset_config":        asset_config,
+        "w_mkt":               w_mkt.tolist(),
+        "Pi":                  Pi.tolist(),
+        "Q":                   Q.tolist(),
+        "P":                   P.tolist(),
+        "mu_BL":               mu_BL.tolist(),
+        "w_star":              w_star.tolist(),
+        "votes_config":        votes_config,
+        "dynamic_constraints": weight_constraints,
+        "group_constraints":   {},
+        "port_ret":            port_ret,
+        "port_vol":            port_vol,
+        "sharpe":              sharpe,
+        "Omega":               Omega,
+        "liquidity_config":    liquidity_config,
+        "score_range_config":  SCORE_RANGE_CONFIG,
+        "durations":           durations,
+        "exp_ret":             exp_ret,
+        "rf":                  rf,
+        "exp_port_ret":        exp_port_ret,
+        "exp_port_vol":        exp_port_vol,
+        "exp_port_sharpe":     exp_port_sharpe,
+        "max_drawdown":        max_drawdown,
+        "report_config":       REPORT_CONFIG,
+        "fixed_income_band":   0.3,
+    }
+
+    import os
+    report_dir = os.path.join(os.path.dirname(__file__), "reports")
+    generate_report(report_data, output_dir=report_dir)
 
     return result_df
 

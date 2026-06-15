@@ -3,8 +3,10 @@ import { reactive } from 'vue';
 export interface PendingModelWeights {
   modelId: string;
   modelName: string;
-  /** code → suggested weight (%) */
+  /** code → suggested weight (%) for intent tab; category → weight (%) for TAA tab */
   weights: Record<string, number>;
+  /** indicates which workbench tab should consume these weights */
+  targetTab?: 'taa' | 'intent';
 }
 
 export interface BatchContext {

@@ -12,6 +12,43 @@ export function isCommitteeOfflineMock(): boolean {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// 0-B. 全局 Mock 切换（运行时可切换，持久化到 localStorage）
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const isGlobalMock = ref(localStorage.getItem('MAP_GLOBAL_MOCK') !== 'false');
+
+export function toggleGlobalMock(val: boolean) {
+  isGlobalMock.value = val;
+  localStorage.setItem('MAP_GLOBAL_MOCK', val ? 'true' : 'false');
+  localStorage.setItem('MAP_ACTIVE_ROLE', activeRole.value);
+  window.location.reload();
+}
+
+/** 与 useApi 一致：全局 Mock 或离线 env 开启时不走 BFF / committee HTTP */
+export function skipCommitteeHttp(): boolean {
+  return isCommitteeOfflineMock() || isGlobalMock.value;
+}
+
+export async function useApi<T>(apiCall: () => Promise<any>, mockData: T): Promise<T> {
+  if (isGlobalMock.value) {
+    console.log(
+      '%c📦 [Mock] %c命中 Mock 数据',
+      'color:#22D3EE;font-weight:bold',
+      'color:#34C759',
+    );
+    await new Promise(r => setTimeout(r, 500));
+    return mockData;
+  }
+  try {
+    const res = await apiCall();
+    return res.data as T;
+  } catch (err) {
+    console.warn('[useApi] 接口报错，降级返回 Mock 数据:', err);
+    return mockData;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // 1. 用户与角色
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -28,7 +65,7 @@ export type Role =
   | 'FICC投资委员会委员'
   | 'FICC投资委员会主任委员';
 
-export const activeRole = ref<Role>('投资经理');
+export const activeRole = ref<Role>((localStorage.getItem('MAP_ACTIVE_ROLE') as Role) || '投资经理');
 
 export const ROLES: Role[] = [
   '班子',
@@ -407,6 +444,666 @@ export interface DeptAllocationDecision {
 /** 投委会正式提交的部门资产配置决策结果，供 MAP 其他页面读取 */
 export const deptAllocationDecision = ref<DeptAllocationDecision | null>(null);
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 13. 统一观点字典（FICC + 混合投委会大一统）
+//     数据源：reference/观点模板.pdf（mock：0413 委员会数据）
+// ═══════════════════════════════════════════════════════════════════════════
+
+export type VoteLevel = '谨慎' | '中性偏谨慎' | '中性' | '中性偏乐观' | '乐观';
+
+export interface VoteAmplitudeMap {
+  谨慎: string;
+  中性偏谨慎: string;
+  中性: string;
+  中性偏乐观: string;
+  乐观: string;
+}
+
+/**
+ * 统一观点配置项，FICC 与混合投委会共享同一字典。
+ * amplitudeType: 'bp'  → 收益率类（绝对 bp 加减），保留 4 位小数
+ * amplitudeType: 'pct' → 价格指数类（相对 % 乘除），保留 2 位小数
+ */
+export interface UnifiedVoteConfigItem {
+  id: string;
+  大类: string;
+  细分策略: string;
+  标的指数: string;
+  当前点位: number;
+  amplitudeType: 'bp' | 'pct';
+  amplitude: VoteAmplitudeMap;
+}
+
+export const UNIFIED_VOTE_CONFIG: UnifiedVoteConfigItem[] = [
+  {
+    id: 'cd_1y_aaa',
+    大类: '固收',
+    细分策略: '存单',
+    标的指数: '1Y AAA存单',
+    当前点位: 1.4825,
+    amplitudeType: 'bp',
+    amplitude: {
+      谨慎: '上行15bp',
+      中性偏谨慎: '上行5-15bp',
+      中性: '±5bp内',
+      中性偏乐观: '下行5-15bp',
+      乐观: '下行15bp',
+    },
+  },
+  {
+    id: 'credit_3y_aa_plus',
+    大类: '固收',
+    细分策略: '信用',
+    标的指数: '3Y AA+中票',
+    当前点位: 1.7814,
+    amplitudeType: 'bp',
+    amplitude: {
+      谨慎: '上行15bp',
+      中性偏谨慎: '上行5-15bp',
+      中性: '±5bp内',
+      中性偏乐观: '下行5-15bp',
+      乐观: '下行15bp',
+    },
+  },
+  {
+    id: 'rate_10y',
+    大类: '固收',
+    细分策略: '利率(10Y)',
+    标的指数: '10Y国债活跃券',
+    当前点位: 1.79,
+    amplitudeType: 'bp',
+    amplitude: {
+      谨慎: '上行15bp',
+      中性偏谨慎: '上行5-15bp',
+      中性: '±5bp内',
+      中性偏乐观: '下行5-15bp',
+      乐观: '下行15bp',
+    },
+  },
+  {
+    id: 'rate_30y',
+    大类: '固收',
+    细分策略: '利率(30Y)',
+    标的指数: '30Y国债活跃券',
+    当前点位: 2.281,
+    amplitudeType: 'bp',
+    amplitude: {
+      谨慎: '上行15bp',
+      中性偏谨慎: '上行5-15bp',
+      中性: '±5bp内',
+      中性偏乐观: '下行5-15bp',
+      乐观: '下行15bp',
+    },
+  },
+  {
+    id: 'cb_csi_convert',
+    大类: '含权',
+    细分策略: '转债',
+    标的指数: '中证转债',
+    当前点位: 502.65,
+    amplitudeType: 'pct',
+    amplitude: {
+      谨慎: '-10%以下',
+      中性偏谨慎: '-10%到-3%',
+      中性: '-3%到3%',
+      中性偏乐观: '3%到10%',
+      乐观: '10%以上',
+    },
+  },
+  {
+    id: 'bond_fund_885007',
+    大类: '含权',
+    细分策略: '二级债基',
+    标的指数: '885007',
+    当前点位: 5224.57,
+    amplitudeType: 'pct',
+    amplitude: {
+      谨慎: '-5%以下',
+      中性偏谨慎: '-5%到-2%',
+      中性: '-2%到2%',
+      中性偏乐观: '2%到5%',
+      乐观: '5%以上',
+    },
+  },
+  {
+    id: 'dividend_csi_total',
+    大类: '含权',
+    细分策略: '红利',
+    标的指数: '中证红利全收益',
+    当前点位: 11945.58,
+    amplitudeType: 'pct',
+    amplitude: {
+      谨慎: '-10%以下',
+      中性偏谨慎: '-10%到-3%',
+      中性: '-3%到3%',
+      中性偏乐观: '3%到10%',
+      乐观: '10%以上',
+    },
+  },
+  {
+    id: 'equity_mixed_885001',
+    大类: '含权',
+    细分策略: '偏股混',
+    标的指数: '885001',
+    当前点位: 7228.45,
+    amplitudeType: 'pct',
+    amplitude: {
+      谨慎: '-10%以下',
+      中性偏谨慎: '-10%到-3%',
+      中性: '-3%到3%',
+      中性偏乐观: '3%到10%',
+      乐观: '10%以上',
+    },
+  },
+  {
+    id: 'hktech_513310',
+    大类: '含权',
+    细分策略: '恒生科技',
+    标的指数: '513310恒生科技ETF',
+    当前点位: 4986.78,
+    amplitudeType: 'pct',
+    amplitude: {
+      谨慎: '-10%以下',
+      中性偏谨慎: '-10%到-3%',
+      中性: '-3%到3%',
+      中性偏乐观: '3%到10%',
+      乐观: '10%以上',
+    },
+  },
+  {
+    id: 'gold_518880',
+    大类: '另类',
+    细分策略: '黄金',
+    标的指数: '518880黄金ETF',
+    当前点位: 7.283,
+    amplitudeType: 'pct',
+    amplitude: {
+      谨慎: '-10%以下',
+      中性偏谨慎: '-10%到-3%',
+      中性: '-3%到3%',
+      中性偏乐观: '3%到10%',
+      乐观: '10%以上',
+    },
+  },
+  {
+    id: 'crude_oil',
+    大类: '另类',
+    细分策略: '原油',
+    标的指数: 'SC原油主力合约',
+    当前点位: 490.0,
+    amplitudeType: 'pct',
+    amplitude: {
+      谨慎: '-10%以下',
+      中性偏谨慎: '-10%到-3%',
+      中性: '-3%到3%',
+      中性偏乐观: '3%到10%',
+      乐观: '10%以上',
+    },
+  },
+];
+
+// ─── 分发策略子集 ─────────────────────────────────────────────────────────────
+
+/** FICC 投委会资产列表：偏重固收，含存单、信用、利率、转债、二级债基 */
+export const FICC_ASSET_LIST: UnifiedVoteConfigItem[] = UNIFIED_VOTE_CONFIG.filter(item =>
+  ['cd_1y_aaa', 'credit_3y_aa_plus', 'rate_10y', 'rate_30y', 'cb_csi_convert', 'bond_fund_885007'].includes(item.id),
+);
+
+/**
+ * 混合投委会资产列表：偏重权益，含红利、偏股混、恒生科技、黄金，
+ * 附 10Y/30Y 利率债作为固收基准参考。
+ */
+export const MIXED_ASSET_LIST: UnifiedVoteConfigItem[] = UNIFIED_VOTE_CONFIG.filter(item =>
+  ['dividend_csi_total', 'equity_mixed_885001', 'hktech_513310', 'gold_518880', 'rate_10y', 'rate_30y'].includes(item.id),
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 季度展望配置（FICC 投委会专用）
+//
+// 季度视角较月度观察窗口更长，幅度档位相应拉宽：
+//   bp 类（收益率）：月度 ±5/5-15/15bp → 季度 ±15/15-30/30bp
+//   pct 类（宽幅，如权益/另类）：月度 ±3/3-10/10% → 季度 ±8/8-20/20%
+//   pct 类（窄幅，如债基）：月度 ±2/2-5/5%  → 季度 ±5/5-12/12%
+//
+// 资产范围：在月度 FICC 基础上，追加红利全收益、恒生科技、黄金、REITs，
+// 覆盖 PDF《观点模板》中 固收 / 含权 / 另类 三大类全量标的。
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const FICC_QUARTERLY_CONFIG: UnifiedVoteConfigItem[] = [
+  // ──────────────── 固收 ────────────────
+  {
+    id: 'q_cd_1y_aaa',
+    大类: '固收',
+    细分策略: '存单(季)',
+    标的指数: '1Y AAA存单',
+    当前点位: 1.4825,
+    amplitudeType: 'bp',
+    amplitude: {
+      谨慎:     '上行30bp',
+      中性偏谨慎: '上行15-30bp',
+      中性:     '±15bp内',
+      中性偏乐观: '下行15-30bp',
+      乐观:     '下行30bp',
+    },
+  },
+  {
+    id: 'q_credit_3y_aa_plus',
+    大类: '固收',
+    细分策略: '信用(季)',
+    标的指数: '3Y AA+中票',
+    当前点位: 1.7814,
+    amplitudeType: 'bp',
+    amplitude: {
+      谨慎:     '上行30bp',
+      中性偏谨慎: '上行15-30bp',
+      中性:     '±15bp内',
+      中性偏乐观: '下行15-30bp',
+      乐观:     '下行30bp',
+    },
+  },
+  {
+    id: 'q_rate_10y',
+    大类: '固收',
+    细分策略: '利率10Y(季)',
+    标的指数: '10Y国债活跃券',
+    当前点位: 1.79,
+    amplitudeType: 'bp',
+    amplitude: {
+      谨慎:     '上行30bp',
+      中性偏谨慎: '上行15-30bp',
+      中性:     '±15bp内',
+      中性偏乐观: '下行15-30bp',
+      乐观:     '下行30bp',
+    },
+  },
+  {
+    id: 'q_rate_30y',
+    大类: '固收',
+    细分策略: '利率30Y(季)',
+    标的指数: '30Y国债活跃券',
+    当前点位: 2.281,
+    amplitudeType: 'bp',
+    amplitude: {
+      谨慎:     '上行30bp',
+      中性偏谨慎: '上行15-30bp',
+      中性:     '±15bp内',
+      中性偏乐观: '下行15-30bp',
+      乐观:     '下行30bp',
+    },
+  },
+  // ──────────────── 含权 ────────────────
+  {
+    id: 'q_cb_csi_convert',
+    大类: '含权',
+    细分策略: '转债(季)',
+    标的指数: '中证转债',
+    当前点位: 502.65,
+    amplitudeType: 'pct',
+    amplitude: {
+      谨慎:     '-20%以下',
+      中性偏谨慎: '-20%到-8%',
+      中性:     '-8%到8%',
+      中性偏乐观: '8%到20%',
+      乐观:     '20%以上',
+    },
+  },
+  {
+    id: 'q_bond_fund_885007',
+    大类: '含权',
+    细分策略: '二级债基(季)',
+    标的指数: '885007',
+    当前点位: 5224.57,
+    amplitudeType: 'pct',
+    amplitude: {
+      谨慎:     '-12%以下',
+      中性偏谨慎: '-12%到-5%',
+      中性:     '-5%到5%',
+      中性偏乐观: '5%到12%',
+      乐观:     '12%以上',
+    },
+  },
+  {
+    id: 'q_dividend_csi_total',
+    大类: '含权',
+    细分策略: '红利(季)',
+    标的指数: '中证红利全收益',
+    当前点位: 11945.58,
+    amplitudeType: 'pct',
+    amplitude: {
+      谨慎:     '-20%以下',
+      中性偏谨慎: '-20%到-8%',
+      中性:     '-8%到8%',
+      中性偏乐观: '8%到20%',
+      乐观:     '20%以上',
+    },
+  },
+  {
+    id: 'q_hktech_513310',
+    大类: '含权',
+    细分策略: '恒生科技(季)',
+    标的指数: '513310恒生科技ETF',
+    当前点位: 4986.78,
+    amplitudeType: 'pct',
+    amplitude: {
+      谨慎:     '-20%以下',
+      中性偏谨慎: '-20%到-8%',
+      中性:     '-8%到8%',
+      中性偏乐观: '8%到20%',
+      乐观:     '20%以上',
+    },
+  },
+  {
+    id: 'q_reits_csi_total',
+    大类: '含权',
+    细分策略: 'REITs(季)',
+    标的指数: '中证REITs全收益',
+    当前点位: 1018.07,
+    amplitudeType: 'pct',
+    amplitude: {
+      谨慎:     '-20%以下',
+      中性偏谨慎: '-20%到-8%',
+      中性:     '-8%到8%',
+      中性偏乐观: '8%到20%',
+      乐观:     '20%以上',
+    },
+  },
+  // ──────────────── 另类 ────────────────
+  {
+    id: 'q_gold_518880',
+    大类: '另类',
+    细分策略: '黄金(季)',
+    标的指数: '518880黄金ETF',
+    当前点位: 7.283,
+    amplitudeType: 'pct',
+    amplitude: {
+      谨慎:     '-20%以下',
+      中性偏谨慎: '-20%到-8%',
+      中性:     '-8%到8%',
+      中性偏乐观: '8%到20%',
+      乐观:     '20%以上',
+    },
+  },
+  {
+    id: 'q_crude_oil',
+    大类: '另类',
+    细分策略: '原油(季)',
+    标的指数: 'SC原油主力合约',
+    当前点位: 490.0,
+    amplitudeType: 'pct',
+    amplitude: {
+      谨慎:     '-20%以下',
+      中性偏谨慎: '-20%到-8%',
+      中性:     '-8%到8%',
+      中性偏乐观: '8%到20%',
+      乐观:     '20%以上',
+    },
+  },
+];
+
+/**
+ * FICC 季度展望资产列表（供页面直接渲染）。
+ * 涵盖 固收 4 项 + 含权 5 项 + 另类 2 项，合计 11 项。
+ */
+export const FICC_QUARTERLY_ASSET_LIST: UnifiedVoteConfigItem[] = FICC_QUARTERLY_CONFIG;
+
+// ─── 点位区间推算引擎 ─────────────────────────────────────────────────────────
+
+export interface TargetRange {
+  low: number | null;
+  high: number | null;
+}
+
+/**
+ * 通用点位区间推算函数。
+ *
+ * bp 格式（收益率类，如"上行15bp"、"上行5-15bp"、"±5bp内"、"下行5-15bp"）：
+ *   delta = bpValue / 10000 * 100，结果保留 4 位小数。
+ *   上行 → 收益率升高（low ≤ high，low 为较小变动，high 为较大变动）。
+ *   下行 → 收益率降低。
+ *   "谨慎/乐观"单档（如"上行15bp"）视为无上界/无下界，对应端返回 null。
+ *
+ * pct 格式（价格指数类，如"-3%到3%"、"10%以上"、"-10%以下"）：
+ *   target = currentPoint × (1 + pct/100)，结果保留 2 位小数。
+ */
+export function calcTargetRange(currentPoint: number, amplitudeStr: string): TargetRange {
+  const s = amplitudeStr.trim();
+
+  if (s.includes('bp')) {
+    const bpToDelta = (n: number) => parseFloat((n / 10000 * 100).toFixed(4));
+    const fix4 = (n: number) => parseFloat(n.toFixed(4));
+
+    // ±xbp内
+    const pmMatch = s.match(/^[±\+\-]?(\d+(?:\.\d+)?)bp内?$/);
+    if (pmMatch) {
+      const d = bpToDelta(parseFloat(pmMatch[1]));
+      return { low: fix4(currentPoint - d), high: fix4(currentPoint + d) };
+    }
+
+    // 上行/下行 min-maxbp (range)
+    const rangeMatch = s.match(/^(上行|下行)(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)bp$/);
+    if (rangeMatch) {
+      const dir = rangeMatch[1];
+      const dMin = bpToDelta(parseFloat(rangeMatch[2]));
+      const dMax = bpToDelta(parseFloat(rangeMatch[3]));
+      return dir === '上行'
+        ? { low: fix4(currentPoint + dMin), high: fix4(currentPoint + dMax) }
+        : { low: fix4(currentPoint - dMax), high: fix4(currentPoint - dMin) };
+    }
+
+    // 上行/下行 single bp (extreme grade, one side unbounded)
+    const singleMatch = s.match(/^(上行|下行)(\d+(?:\.\d+)?)bp$/);
+    if (singleMatch) {
+      const dir = singleMatch[1];
+      const d = bpToDelta(parseFloat(singleMatch[2]));
+      return dir === '上行'
+        ? { low: fix4(currentPoint + d), high: null }
+        : { low: null, high: fix4(currentPoint - d) };
+    }
+
+    return { low: null, high: null };
+  }
+
+  if (s.includes('%')) {
+    const fix2 = (n: number) => parseFloat(n.toFixed(2));
+    const scale = (pct: number) => fix2(currentPoint * (1 + pct / 100));
+
+    // x%以上
+    const aboveMatch = s.match(/^([\+\-]?\d+(?:\.\d+)?)%以上$/);
+    if (aboveMatch) {
+      return { low: scale(parseFloat(aboveMatch[1])), high: null };
+    }
+
+    // x%以下
+    const belowMatch = s.match(/^([\+\-]?\d+(?:\.\d+)?)%以下$/);
+    if (belowMatch) {
+      return { low: null, high: scale(parseFloat(belowMatch[1])) };
+    }
+
+    // a%到b%
+    const toMatch = s.match(/^([\+\-]?\d+(?:\.\d+)?)%到([\+\-]?\d+(?:\.\d+)?)%$/);
+    if (toMatch) {
+      const a = parseFloat(toMatch[1]);
+      const b = parseFloat(toMatch[2]);
+      return { low: scale(Math.min(a, b)), high: scale(Math.max(a, b)) };
+    }
+  }
+
+  return { low: null, high: null };
+}
+
+// ─── 票数统计引擎 ─────────────────────────────────────────────────────────────
+
+/** 委员单次提交记录：votes 是 细分策略名 → 档位 的映射 */
+export interface CommitteeMemberSubmission {
+  userId?: number | string;
+  submittedAt?: string;
+  votes: Partial<Record<string, VoteLevel>>;
+  /**
+   * 是否为秘书代填。当 submitVote 以 targetMemberId 调用时自动置为 true。
+   */
+  isProxy?: boolean;
+  /**
+   * 代填人的角色标识（即发起代填操作的秘书的 activeRole 值）。
+   */
+  proxySubmitterRole?: string;
+}
+
+/** 5档分布 + 加权均值 + 共识档位结论 */
+export interface VoteDistributionResult {
+  /** 每个档位获得的票数，未投票档位为 0 */
+  distribution: Record<VoteLevel, number>;
+  /** 参与投票总人数（过滤掉未投该资产的委员） */
+  totalVotes: number;
+  /**
+   * 加权均值（谨慎=1 … 乐观=5），保留两位小数。
+   * 无票时返回 null。
+   */
+  weightedMean: number | null;
+  /**
+   * 共识档位结论：对加权均值四舍五入后映射回档位名称。
+   * 无票时返回 null。
+   */
+  consensusLevel: VoteLevel | null;
+}
+
+const VOTE_LEVEL_SCORE: Record<VoteLevel, number> = {
+  谨慎: 1,
+  中性偏谨慎: 2,
+  中性: 3,
+  中性偏乐观: 4,
+  乐观: 5,
+};
+
+const VOTE_SCORE_LEVEL: Record<number, VoteLevel> = {
+  1: '谨慎',
+  2: '中性偏谨慎',
+  3: '中性',
+  4: '中性偏乐观',
+  5: '乐观',
+};
+
+/**
+ * 统计某细分策略在所有委员提交记录中的票数分布，并输出加权均值与共识档位。
+ *
+ * @param assetName  细分策略名称（须与 UNIFIED_VOTE_CONFIG 中的 细分策略 字段一致）
+ * @param submissions 所有委员的提交记录数组
+ */
+export function calcVoteDistribution(
+  assetName: string,
+  submissions: CommitteeMemberSubmission[],
+): VoteDistributionResult {
+  const distribution: Record<VoteLevel, number> = {
+    谨慎: 0,
+    中性偏谨慎: 0,
+    中性: 0,
+    中性偏乐观: 0,
+    乐观: 0,
+  };
+
+  for (const sub of submissions) {
+    const vote = sub.votes[assetName];
+    if (vote && vote in distribution) {
+      distribution[vote]++;
+    }
+  }
+
+  const totalVotes = (Object.values(distribution) as number[]).reduce((s, c) => s + c, 0);
+
+  if (totalVotes === 0) {
+    return { distribution, totalVotes: 0, weightedMean: null, consensusLevel: null };
+  }
+
+  const weightedSum = (Object.entries(distribution) as [VoteLevel, number][]).reduce(
+    (s, [level, count]) => s + count * VOTE_LEVEL_SCORE[level],
+    0,
+  );
+
+  const rawMean = weightedSum / totalVotes;
+  const weightedMean = parseFloat(rawMean.toFixed(2));
+  const rounded = Math.max(1, Math.min(5, Math.round(rawMean))) as 1 | 2 | 3 | 4 | 5;
+  const consensusLevel = VOTE_SCORE_LEVEL[rounded];
+
+  return { distribution, totalVotes, weightedMean, consensusLevel };
+}
+
+// ─── 委员名单 ─────────────────────────────────────────────────────────────────
+
+/** 可遍历的委员描述，供秘书代填时选人 */
+export interface CommitteeMember {
+  id: string;
+  name: string;
+  role: string;
+}
+
+/** 混合投委会委员名单 */
+export const COMMITTEE_MEMBERS: CommitteeMember[] = [
+  { id: 'm0', name: '曾XX', role: '主任委员' },
+  { id: 'm1', name: '陈XX', role: '班子' },
+  { id: 'm2', name: '张XX', role: '部门长' },
+  { id: 'm3', name: '李XX', role: '投资经理' },
+  { id: 'm4', name: '王XX', role: '部门长' },
+  { id: 'm5', name: '赵XX', role: '投资经理' },
+  { id: 'm6', name: '刘XX', role: '风控合规总监' },
+];
+
+/** FICC 投委会委员名单 */
+export const FICC_COMMITTEE_MEMBERS: CommitteeMember[] = [
+  { id: 'f1', name: '王XX', role: '固收主任' },
+  { id: 'f2', name: '张XX', role: '利率策略' },
+  { id: 'f3', name: '李XX', role: '信用策略' },
+  { id: 'f4', name: '王XX', role: '货币市场' },
+  { id: 'f5', name: '赵XX', role: '跨境固收' },
+  { id: 'f6', name: '刘XX', role: '量化固收' },
+  { id: 'f7', name: '周XX', role: '固收研究' },
+];
+
+// ─── 代填感知的投票提交 ───────────────────────────────────────────────────────
+
+/**
+ * 向 BFF 提交一份委员问卷，支持秘书（RPA）代填模式。
+ *
+ * @param meetingId      目标会议 ID（由调用方通过 resolveVotingMeetingId 或类似逻辑获取）
+ * @param payload        标准 submit-vote 请求体（与 /v1/committee/meetings/:id/submit-vote 的 body 保持一致）
+ * @param targetMemberId 可选。若传入，本次提交绑定到该委员名下（代填），并自动加 isProxy: true。
+ *                       若不传，绑定到当前 activeRole 所对应的委员（自填）。
+ * @returns              归档用的 CommitteeMemberSubmission 对象，调用方可直接写入本地 reactive。
+ */
+export async function submitVote(
+  meetingId: number,
+  payload: Record<string, unknown>,
+  targetMemberId?: string,
+): Promise<CommitteeMemberSubmission> {
+  const isProxy = !!targetMemberId;
+
+  // 从 "m1"/"m2" 格式中提取数字 user_id 供后端使用
+  const numericUserId = targetMemberId
+    ? parseInt(targetMemberId.replace(/\D/g, ''), 10)
+    : undefined;
+
+  const body: Record<string, unknown> = {
+    ...payload,
+    ...(isProxy && !isNaN(numericUserId!) && {
+      target_member_id: numericUserId,
+      is_proxy: true,
+      proxy_submitter_role: activeRole.value,
+    }),
+  };
+
+  await useApi(() => http.post(`/v1/committee/meetings/${meetingId}/submit-vote`, body), undefined);
+
+  const submission: CommitteeMemberSubmission = {
+    userId: targetMemberId ?? activeRole.value,
+    submittedAt: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+    votes: (payload.votes as Partial<Record<string, VoteLevel>>) ?? {},
+    ...(isProxy && {
+      isProxy: true,
+      proxySubmitterRole: activeRole.value,
+    }),
+  };
+
+  return submission;
+}
+
 export interface PortalSnapshotChoiceResult {
   winner: string;
   vote_counts: Record<string, number>;
@@ -582,6 +1279,72 @@ export const committeePageContext = ref<CommitteePageContextDTO | null>(null);
 export const committeeContextLoading = ref(false);
 export const committeeContextError = ref<string | null>(null);
 
+/** 离线 Mock 默认「进行中」会议，与 CommitteeView MOCK_MEETINGS id=3 对齐 */
+const MOCK_ACTIVE_MEETING_SUMMARY: CommitteeMeetingSummaryDTO = {
+  id: 3,
+  meeting_code: 'IC-2026-Q2-04',
+  title: '混合投委会 2026 Q2 投资策略与TAA目标决议',
+  type: 'mixed',
+  status: '进行中',
+  scheduled_at: '2026-04-15T14:00:00',
+  created_by: 1,
+  created_at: '2026-04-01T10:00:00',
+  updated_at: '2026-04-15T14:00:00',
+};
+
+export interface CommitteeMeetingListItem {
+  id: number;
+  status: string;
+}
+
+const MOCK_COMMITTEE_MEETING_LIST: CommitteeMeetingListItem[] = [
+  { id: 1, status: '已归档' },
+  { id: 2, status: '已结束' },
+  { id: 3, status: '进行中' },
+];
+
+export const committeeMeetingList = ref<CommitteeMeetingListItem[]>([]);
+
+function mapCommitteeMeetingStatus(status: string): string {
+  switch (status) {
+    case 'draft': return '筹备中';
+    case 'voting': return '进行中';
+    case 'published': return '已结束';
+    default: return status;
+  }
+}
+
+/** 拉取混合投委会会议列表（H5 投票页 / 会议 ID 解析兜底） */
+export async function fetchCommitteeMeetingList() {
+  if (skipCommitteeHttp()) {
+    committeeMeetingList.value = [...MOCK_COMMITTEE_MEETING_LIST];
+    return;
+  }
+  const items = await useApi(
+    () => http.get<Array<{ id: number; status: string }>>('/v1/committee/meetings', {
+      params: { type: 'mixed' },
+    }),
+    MOCK_COMMITTEE_MEETING_LIST,
+  );
+  committeeMeetingList.value = Array.isArray(items)
+    ? items.map(m => ({ id: m.id, status: mapCommitteeMeetingStatus(m.status) }))
+    : [...MOCK_COMMITTEE_MEETING_LIST];
+}
+
+/**
+ * 解析当前可投票会议 ID（与 CommitteeView.resolveVotingMeetingId 逻辑一致）。
+ * 优先级：URL meeting_id → page-context → 进行中会议 → 列表首条
+ */
+export function resolveVotingMeetingId(options?: { urlMeetingId?: number | null }): number | null {
+  const urlId = options?.urlMeetingId;
+  if (urlId != null && !Number.isNaN(urlId)) return urlId;
+  const ctxId = committeePageContext.value?.meeting?.id;
+  if (typeof ctxId === 'number') return ctxId;
+  const active = committeeMeetingList.value.find(m => m.status === '进行中');
+  if (active) return active.id;
+  return committeeMeetingList.value[0]?.id ?? null;
+}
+
 function formatAxiosError(e: unknown): string {
   if (axios.isAxiosError(e)) {
     const d = e.response?.data;
@@ -600,7 +1363,7 @@ function formatAxiosError(e: unknown): string {
  * （MAP 门户默认 Tab 使用；投委会 Tab 请用 fetchCommitteePageData）
  */
 export async function fetchMeetingResolution() {
-  if (isCommitteeOfflineMock()) {
+  if (skipCommitteeHttp()) {
     portalSnapshotLoading.value = false;
     portalSnapshotError.value = null;
     portalSnapshot.value = null;
@@ -632,18 +1395,25 @@ export async function fetchMeetingResolution() {
  * - 会议编号 / 投票条数等来自 committee/page-context
  */
 export async function fetchCommitteePageData() {
-  if (isCommitteeOfflineMock()) {
+  if (skipCommitteeHttp()) {
     portalSnapshotLoading.value = false;
     committeeContextLoading.value = false;
     portalSnapshotError.value = null;
     committeeContextError.value = null;
     portalSnapshot.value = null;
-    committeePageContext.value = null;
+    committeePageContext.value = {
+      meeting: MOCK_ACTIVE_MEETING_SUMMARY,
+      resolution: null,
+      votes: [],
+    };
+    committeeMeetingList.value = [...MOCK_COMMITTEE_MEETING_LIST];
     // eslint-disable-next-line no-console
     console.log(
       '%c📴 [CommitteeView API]',
       'color:#94A3B8;font-weight:bold',
-      'VITE_COMMITTEE_OFFLINE_MOCK 已开启：跳过 portal-snapshot 与 committee/page-context',
+      isCommitteeOfflineMock()
+        ? 'VITE_COMMITTEE_OFFLINE_MOCK 已开启：使用本地 Mock 会议上下文'
+        : '全局 Mock 已开启：使用本地 Mock 会议上下文',
     );
     return;
   }

@@ -32,7 +32,7 @@
 | Web API | `uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4` | 提供 HTTP / SSE，包含 MQ 生产者 |
 | MQ 消费者 | 同上（lifespan 内自动启动） | 由 `consumer_worker` 守护，无需独立进程 |
 
-> 如果计划独立部署消费者（推荐生产模式），需要将 `app/modules/consumers/worker.py` 改造为独立 entrypoint；当前实现已经在 `lifespan` 里启动，单 Web 实例即可工作，但**多实例水平扩展时只能有 1 个 Web 实例承担消费角色**，建议先用单实例上线，水平扩容再拆分。
+> 当前 `consumer_worker` 在 `lifespan` 内自动启动，单实例即可工作。**多实例水平扩展时需先做消费者拆分**，否则每个实例会重复消费同一消息。首期 stub 模式无需处理。
 
 ---
 
@@ -48,94 +48,99 @@
 |------|------|------|
 | `requirements.txt` | ✅ 已有 | 平台执行 `pip install -r requirements.txt` 装依赖（走平台内置的内部 PyPI 镜像） |
 | `app/` | ✅ 已有 | FastAPI 应用包，入口 `app.main:app` |
-| `Procfile` 或平台启动配置 | ⚠️ 见 2.4 | 声明启动命令；具体格式由平台定 |
+| `run.sh` | ✅ 已有 | 一键启动脚本：装依赖 → 建库 → 建表 → 起 Uvicorn（见 2.4） |
 | `.gitignore` | ✅ 已有 | 已排除 `map_wheels/`、`.claude/`、`venv/` |
 | `.dockerignore` | ✅ 已有 | 防御性配置：若平台构建走 Docker 体系，这份排除清单会被识别，避免把 `.venv/`、`__pycache__/`、`.claude/`、本地 SQLite、`deploy_prod.md` 等本地开发噪声打进镜像 |
 
 **不需要**：`Dockerfile`、K8s YAML、wheel 离线包——平台都管。
 
-#### 2.1.1 需要向平台部确认的 6 件事
+#### 2.1.1 需要向平台部确认
 
-| # | 项 | 写进部署配置时填什么 |
+| # | 项 | 要求 |
 |---|---|---|
-| 1 | 运行时 Python 版本 | 必须 **3.10**（与 `requirements.txt` 中 C 扩展的 wheel ABI 匹配）。若平台只提供 3.11/3.12，需重新跑兼容性测试 |
-| 2 | 内部 PyPI 镜像地址 | 平台默认应已配好；确认能解析 `pydantic-core`、`cryptography`、`bcrypt`、`uvloop` 等 C 扩展 |
+| 1 | Python 版本 | **3.10**（与 wheel ABI 匹配） |
+| 2 | 内部 PyPI | 确认能解析 `pydantic-core`、`cryptography`、`bcrypt`、`uvloop` 等 C 扩展 |
 | 3 | 启动命令 | 见 2.4 |
-| 4 | 监听端口 | `8000`（FastAPI 默认 uvicorn 端口；可通过启动命令改） |
-| 5 | 健康检查路径 | `GET /health`，期望 200 + `{"status":"ok",...}` |
-| 6 | 环境变量 / 配置文件挂载方式 | 见 2.3 |
+| 4 | 监听端口 | `8000` |
+| 5 | 健康检查 | `GET /health` → 200 |
+| 6 | 配置注入 | 环境变量方式（见 2.3） |
 
-#### 2.1.2 RocketMQ SDK 单独说明
+#### 2.1.2 RocketMQ SDK
 
-`rocketmq-client-python` 只有 sdist 且 import-time 要 `dlopen` 系统库 `librocketmq.so`。**首期建议直接跳过**——`requirements.txt` 里这一行已经注释掉，代码会自动降级为 stub 模式（日志 `RocketMQ consumer worker started (sdk=False)`），异步指令落 `pending_commands` 表标 PENDING，不阻断启动。
-
-要启用时需要平台部协助：
-1. 在基础镜像里装好 `librocketmq` 系统库（提工单）
-2. 把内部 PyPI 镜像同步 `rocketmq-client-python==2.0.0` 的 sdist
-3. 取消 `requirements.txt` 中该行的注释，重新发布
+`rocketmq-client-python` 依赖系统库 `librocketmq.so`。**首期跳过**——已注释掉，代码自动降级 stub 模式，不阻断启动。启用时需平台部安装系统库并取消 `requirements.txt` 中的注释。
 
 ### 2.2 数据库初始化
 
-数据库由 DBA 在 TDSQL 集群上创建：
+**`run.sh` 已内置自动建库建表逻辑**，启动时自动执行，无需手工操作：
 
-```sql
-CREATE DATABASE mapdb DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'map_app'@'%' IDENTIFIED BY '<由 DBA 生成的强密码>';
-GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, INDEX, ALTER, REFERENCES ON mapdb.* TO 'map_app'@'%';
-FLUSH PRIVILEGES;
+1. **建库**：通过 `INFORMATION_SCHEMA.SCHEMATA` 检查数据库是否存在，不存在则 `CREATE DATABASE`；已存在则跳过。
+2. **建表**：通过 SQLAlchemy `metadata.create_all` 幂等建表（`CREATE TABLE IF NOT EXISTS`），已建表无副作用。
+
+```bash
+# run.sh 内部流程（伪代码）：
+# 1. 从 config.json 读取 DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME
+# 2. 用 pymysql 检查库是否存在 → 不存在则 CREATE DATABASE
+# 3. 导入所有 ORM 模型 → Base.metadata.create_all()
+# 4. 启动 Uvicorn
 ```
 
-> 业务表通过 SQLAlchemy `metadata.create_all` 自动建立，无需手工建表。如 DBA 不允许应用账号有 DDL 权限，请先用 DBA 账号执行下方 Python 脚本建表，再回收 `CREATE/DROP/ALTER` 权限。
+> 若 DBA 已手动建库，`run.sh` 会自动检测并跳过建库步骤。所有操作均为幂等，重复执行安全。
 
-首次建表（测试环境首次发布成功后，在平台 Web Terminal 进入运行中的容器执行一次；生产环境同样在首次发布后执行一次）：
-```bash
-cd /opt/map_backend
-export CONFIG_PATH=/etc/map/config.json
-python - <<'PY'
-import asyncio
-from app.core.db_tdsql import _ensure_engine_and_factory
-from app.core.orm_base import Base
-import app.modules.committee.models           # noqa
-import app.modules.committee.mixed_models     # noqa
-import app.modules.orchestrator.models        # noqa
-import app.modules.asset_allocation.models    # noqa
-import app.modules.auth.models                # noqa
+**手动建库（可选，仅 DBA 需要）**：
 
-async def main():
-    factory = _ensure_engine_and_factory()
-    engine = factory.kw["bind"]
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    await engine.dispose()
-
-asyncio.run(main())
-print("OK: tables created.")
-PY
+```sql
+-- DBA 手动建库（run.sh 可自动完成，此命令仅保留参考）：
+-- CREATE DATABASE pawmmapdata DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
 涉及的表（合计 8 张，均无物理外键）：`map_users`、`ic_meetings`、`ic_vote_records`、`ic_resolutions`、`ic_chair_resolutions`、`mixed_submissions`、`pending_commands`、`saa_drafts`（具体以模型 `__tablename__` 为准）。
 
 ### 2.3 运行时配置注入
 
-`config.json` **绝不进 Git**。在平台的"环境变量 / 配置中心"页面分两类录入，**全部走环境变量**（代码里 `app/core/config.py` 已支持环境变量覆盖 `config.json` 同名字段）：
+`config.json` **绝不进 Git**。在平台的"环境变量 / 配置中心"页面分两类录入：
 
 | 分类 | 内容 | 平台 UI 填法 |
 |------|------|--------------|
-| 非敏感（普通环境变量） | `APP_ENV=production`、`DEBUG=false`、`DB_HOST`、`DB_PORT`、`DB_NAME`、`DB_USER`、`DB_CHARSET`、`REDIS_HOST`、`REDIS_PORT`、`SSO_LOGIN_URL`、`SSO_VALIDATE_URL`、`SSO_LOGIN_REDIRECT_URL`、`PORTFOLIO_SYS_URL`、`RISK_SYS_URL` 等 | "环境变量" 直接键值录入 |
+| 非敏感 | `APP_ENV=production`、`DEBUG=false`、`DB_HOST`、`DB_PORT`、`DB_NAME`、`DB_USER`、`DB_CHARSET`、`REDIS_HOST`、`REDIS_PORT`、`SSO_LOGIN_URL`、`SSO_VALIDATE_URL`、`SSO_LOGIN_REDIRECT_URL`、`PORTFOLIO_SYS_URL`、`RISK_SYS_URL` 等 | "环境变量" 直接键值录入 |
 | 敏感（凭据） | `DB_PASSWORD`、`REDIS_PASSWORD`、`SECRET_KEY`、`PORTAL_CLIENT_SECRET` | 平台一般有"密钥/Secret 管理"或"加密配置"开关，把这几项勾上加密；**不要直接写进普通环境变量框** |
 
-**两种等效注入方式**（看平台支持哪个，二选一即可）：
+**配置加载机制**（代码 `app/core/config.py` 实现）：
 
-1. **纯环境变量**：所有字段都通过平台 UI 录入环境变量，**不需要** `config.json` 文件。代码 `_load_config()` 会在缺文件时跳过加载、纯走环境变量。
-2. **配置文件 + 环境变量**：平台支持"配置文件挂载"时，把非敏感字段写成 `config.json` 内容贴进去，平台挂到容器内某路径，再设置环境变量 `CONFIG_PATH=<挂载路径>/config.json`；敏感字段单独走加密环境变量。
+1. 先读 `config.json` 作为**基础配置模板**（同一份代码推送到所有环境，config.json 不变）
+2. 同名环境变量**自动覆盖** config.json 中的值（`SSO_VALIDATE_URL`、`DB_HOST` 等通过平台 UI 按环境录入不同值）
+3. 敏感字段也可以走环境变量覆盖（见 3.3），**不需要**写进 config.json
 
-> 完整字段清单见本文档 **第 5 节 · 配置表**。先按方式 1 录入最省事，缺哪个字段补哪个。
+> 部署方式：**同一份 config.json + 平台按环境注入不同环境变量**。三套环境只需维护一份代码和一份 config.json 模板，差异化配置全部在平台 UI 上管理。
 
 
 
 ### 2.4 启动命令
 
-在平台的"启动命令 / Procfile / Entrypoint"配置项里填：
+平台的"启动命令 / Entrypoint"配置项里有两种方式，**推荐方式 A**：
+
+#### 方式 A：使用 `run.sh`（推荐）
+
+```bash
+bash run.sh
+```
+
+`run.sh` 内部流程：
+1. 读取 `config.json`（可通过 `CONFIG_PATH` 环境变量覆盖路径）
+2. `pip install -r requirements.txt` 安装依赖（走内部 PyPI 镜像，可通过 `INTERNAL_PYPI` 环境变量覆盖）
+3. 检查并创建数据库（幂等：已建则跳过）
+4. 首次建表（幂等：已建表则无副作用）
+5. `exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 --proxy-headers --forwarded-allow-ips=*`
+
+可配置环境变量：
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `CONFIG_PATH` | `./config.json` | config.json 路径 |
+| `INTERNAL_PYPI` | （空） | 内部 PyPI 镜像地址，留空则使用 pip 默认源 |
+| `WORKERS` | `4` | Uvicorn worker 数量 |
+| `PORT` | `8000` | 监听端口 |
+
+#### 方式 B：直接启动（适合已预装依赖的场景）
 
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 --proxy-headers --forwarded-allow-ips=*
@@ -148,12 +153,9 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 --proxy-headers --fo
 | `--host 0.0.0.0` | ✅ | 容器内必须监听全部网卡，否则平台健康检查打不进来 |
 | `--port 8000` | ⚠️ | 与平台 UI 里填的"监听端口"一致即可；如果平台强制要 8080，把这里和端口字段一起改 |
 | `--workers 4` | 建议 | 单 Pod 起 4 个 worker 进程；按平台分配的 CPU 配额调（一般 worker 数 ≈ CPU 核数） |
-| `--proxy-headers --forwarded-allow-ips=*` | ✅ | 平台 Ingress 前置代理，必须信任 `X-Forwarded-*` 头，否则 `request.client.host` 是平台代理 IP、`scheme` 永远是 http，SSO 回调 Cookie 的 Secure/HttpOnly 判断会错 |
+| `--proxy-headers --forwarded-allow-ips=*` | ✅ | 平台 Ingress 前置代理，必须信任 `X-Forwarded-*` 头，否则 SSO 回调 Cookie 的 Secure/HttpOnly 判断会错 |
 
-> **关于 `--workers` 与 RocketMQ 消费者**
-> 当前代码 `app/core/rocketmq_client.py` 把消费者放在 FastAPI `lifespan` 启动。`--workers > 1` 会让每个 worker 都起一份消费者，同一 ConsumerGroup 下**重复消费**（见第 10 节风险项 #2）。
-> - 首期 RocketMQ 走 stub 模式 → `--workers 4` 没问题（stub 不消费真实消息）
-> - 启用 RocketMQ 后 → 要么 `--workers 1`，要么先做消费者拆分改造
+> **`--workers` 与 RocketMQ**：首期 stub 模式 `--workers 4` 没问题。启用 RocketMQ 后需改为 `--workers 1` 或做消费者拆分。
 
 ### 2.5 域名与对外路径
 
@@ -185,17 +187,19 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 --proxy-headers --fo
 mysql+aiomysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}?charset={DB_CHARSET}
 ```
 
-修改 `config.json` 中的 6 项即可，**无需改任何代码**：
+拼接后实际 URL：`mysql+aiomysql://deployop:j3eKJSbX29e3@t0pawmmapdata-my.db.qa.pab.com.cn:3306/pawmmapdata?charset=utf8mb4`
+
+修改环境变量即可（同名覆盖 config.json），**无需改任何代码**：
 
 | 字段 | 生产示例 | 说明 |
 |------|----------|------|
-| `MAP_USE_SQLITE` | `false` | **生产必须 false**，否则会写本地 SQLite |
-| `DB_HOST` | `tdsql-map-prod.intranet.company.com` | DBA 提供的 VIP 或域名 |
-| `DB_PORT` | `5400` | TDSQL 默认 5400（不是 3306） |
-| `DB_USER` | `map_app` | 业务账号，**最小权限**：DML + 必要 DDL |
-| `DB_PASSWORD` | `<DBA 颁发>` | 不要硬编码，可改为读环境变量（见 3.3） |
-| `DB_NAME` | `mapdb` | DBA 创建 |
-| `DB_CHARSET` | `utf8mb4` | 不可改，否则中文乱码 |
+| `MAP_USE_SQLITE` | `false` | **生产必须 false** |
+| `DB_HOST` | `t0pawmmapdata-my.db.qa.pab.com.cn` | DBA 提供的 VIP 或域名 |
+| `DB_PORT` | `3306` | 标准 MySQL 端口 |
+| `DB_USER` | `deployop` | 最高权限账号（首期跑通用） |
+| `DB_PASSWORD` | `<环境变量注入>` | 首期可明文配置，生产建议走密钥管理 |
+| `DB_NAME` | `pawmmapdata` | DBA 已建库 |
+| `DB_CHARSET` | `utf8mb4` | 不可改 |
 
 连接池参数（`Settings` 内默认值，按需在 `config.json` 加同名 key 覆盖）：
 
@@ -209,39 +213,16 @@ mysql+aiomysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}?charset={
 
 ### 3.2 连通性验证
 
-在平台 Web Terminal 进入容器后先验证：
+在平台 Web Terminal 进入容器后验证：
 ```bash
-# 端口
-nc -zv tdsql-map-prod.intranet.company.com 5400
-# 账号 + 库
-mysql -h tdsql-map-prod.intranet.company.com -P 5400 -u map_app -p mapdb -e "SHOW TABLES;"
+nc -zv t0pawmmapdata-my.db.qa.pab.com.cn 3306
+mysql -h t0pawmmapdata-my.db.qa.pab.com.cn -P 3306 -u deployop -p pawmmapdata -e "SHOW TABLES;"
 ```
+常见错误：`Access denied` → 密码错；`Can't connect` → 网络不通；`Unknown database` → 库未建。
 
-应用层验证：
-```bash
-curl http://127.0.0.1:8000/api/v1/committee/meetings
-```
-返回 `[]` 或会议列表即正常；返回 500 看**平台日志页面**最近 200 行，常见错误：
-- `Access denied` → DB_USER/DB_PASSWORD 错
-- `Can't connect` → DB_HOST/DB_PORT 错或防火墙未放行
-- `Unknown database` → 库名错或 DBA 未建库
+### 3.3 密码不落盘
 
-### 3.3 密码不落盘（强烈推荐）
-
-`config.json` 含明文密码不符合等保要求。改造方案（不改代码也可，但建议加 4 行）：
-在 `app/core/config.py` 的 `_load_config()` 末尾追加：
-```python
-for k in ("DB_PASSWORD", "REDIS_PASSWORD", "SECRET_KEY"):
-    if v := os.environ.get(k):
-        data[k] = v
-```
-然后通过**平台密钥管理 / 加密环境变量**功能注入（见 2.3）；本地调试可临时用 `.env` 文件，但生产**禁止**把 secrets 提交进 Git 或写到普通环境变量框。
-
-```
-DB_PASSWORD=...
-REDIS_PASSWORD=...
-SECRET_KEY=<openssl rand -hex 32>
-```
+敏感字段（`DB_PASSWORD`、`REDIS_PASSWORD`、`SECRET_KEY`）**不要写在 config.json 明文里**，通过平台密钥管理 / 加密环境变量注入；代码 `_load_config()` 会自动用环境变量覆盖 config.json 同名字段。
 
 
 ---
@@ -253,12 +234,12 @@ SECRET_KEY=<openssl rand -hex 32>
 ```
 [1] 用户浏览器访问 https://<map 对外域名>/  →  平台 Ingress  →  MAP 后端
 [2] 后端检测到无 ssoTokenId 且无 mapToken Cookie → 前端把浏览器跳到门户登录页：
-       ${SSO_LOGIN_URL}?urI=https://<map 对外域名>/
-    （门户接受参数 urI 作为登录成功后的回跳地址）
+       ${SSO_LOGIN_URL}?url=https://<map 对外域名>/
+    （门户接受参数 url 作为登录成功后的回跳地址）
 [3] 用户在门户登录成功 → 门户 302 跳回**我方根 URL**:
        https://<map 对外域名>/?ssoTokenId=<门户颁发的一次性 token>
 [4] MAP 后端 GET / 命中 `root_or_sso_callback`，因带 ssoTokenId 走回调分支:
-      ① 服务端调用门户接口 GET {SSO_VALIDATE_URL}?tokenId=<ssoTokenId>，拿到用户信息 JSON
+      ① 服务端调用门户接口 GET {SSO_VALIDATE_URL}?tokenId=<ssoTokenId>，拿到 `{"data":{"userId":"xxx","userName":"xxx","realName":"xxx","mailAddr":"xxx"}}`
       ② 按 portal_user_id 在 map_users 表查/创建本地用户
       ③ 签发 MAP 内部 JWT (HS256, sub=本地 user_id)
       ④ Set-Cookie: mapToken=<jwt>; HttpOnly; Secure; SameSite=Lax; Max-Age=ACCESS_TOKEN_EXPIRE_MINUTES*60
@@ -266,30 +247,25 @@ SECRET_KEY=<openssl rand -hex 32>
 [5] 之后所有 /api/v1/** 请求自动带 Cookie；后端在 app/dependencies.py 解码 JWT 取 user_id
 ```
 
-涉及代码：
-- 根路径 + SSO 回调：`app/modules/auth/sso_router.py::root_or_sso_callback`
-- 门户校验：`app/modules/auth/services.py::validate_sso_token`
-- 字段解析：`app/modules/auth/services.py::_parse_portal_response`
-- JWT 签发：`app/core/security.py::create_access_token`
-- 鉴权依赖：`app/dependencies.py::get_current_user_id` / `get_portal_user_id`
+涉及代码：`app/modules/auth/sso_router.py`（回调路由）、`app/modules/auth/services.py`（门户校验）、`app/core/security.py`（JWT 签发）。
 
-### 4.2 需要向门户/SSO 团队对齐的 5 件事
+### 4.2 门户对接确认清单
 
-| 项 | 当前实现假设 | 必须确认 |
-|----|------------|---------|
-| 门户登录页 URL | `SSO_LOGIN_URL`（按环境取 dev/fat/prd 三档，见 4.3） | 三档实际可用、跳转参数名是否为 `urI`（注意大写 I） |
-| 校验接口 URL | `SSO_VALIDATE_URL`（当前 dev 网关地址需替换） | 生产内网 URL，HTTP/HTTPS、是否需要双向证书 |
-| 调用方式 | `GET ?tokenId=<id>` | 是否 GET？参数名是否 `tokenId`？是否需要在 Header 加 AppId/Signature |
-| 返回 JSON 字段 | `userId / userName / displayName / email / department`（多别名兼容） | 实际字段名 → 与门户对齐后**改 `_parse_portal_response` 中的取值优先级** |
-| `userId` 类型 | 当前代码 `_parse_portal_user_id` 强转 `int` | 若门户给字符串（如 "E12345"），需把 `map_users.portal_user_id` 改为 `String` 并去掉 `int()` 转换 |
-| 回调地址注册 | **我方根 URL** `https://<map 对外域名>/` | 把根 URL 完整报备给门户白名单（不是 `/auth/sso-callback`） |
+| 项 | 状态 | 备注 |
+|----|------|------|
+| 调用方式 | ✅ 已确认 | GET 请求，URL 带 `?tokenId=xxx` 查询参数即可 |
+| 返回 JSON 结构 | ✅ 已确认 | `{"data":{"userId","userName","realName","mailAddr"}}`，代码已适配 |
+| 门户登录页 URL | ⚠️ 待确认 | `SSO_LOGIN_URL` 三档地址是否可用，跳转参数名是否为 `url` |
+| 校验接口 HTTPS | ⚠️ 待确认 | PRD 环境是否需要 HTTPS 或双向证书 |
+| `userId` 类型 | ⚠️ 待确认 | 若门户给字符串（如 "E12345"），需改 `map_users.portal_user_id` 为 `String(64)` |
+| 回调地址注册 | ⚠️ 待注册 | 把**我方根 URL** `https://<map 对外域名>/` 报备给门户白名单 |
 
 ### 4.3 配置项（按环境录入平台环境变量）
 
 | 字段 | DEV | FAT | PRD | 说明 |
 |------|-----|-----|-----|------|
 | `SSO_LOGIN_URL` | `http://wm.dev.paic.com.cn/lckj/pawm-uc/account_login.html` | `http://wm.stg.paic.com.cn/lckj/pawm-uc/account_login.html` | `http://wm.paic.com.cn/lckj/pawm-uc/account_login.html` | 门户登录页（浏览器跳转） |
-| `SSO_VALIDATE_URL` | dev 网关 `/wmuc/loginServer/loginValidateToken` | fat 网关同路径 | prd 网关同路径 | 门户 tokenId 校验接口（后端调用） |
+| `SSO_VALIDATE_URL` | `http://pawm-pfp-service-gateway.dev.pab.com.cn/wmuc/loginServer/loginValidateToken` | `http://pawm-pfp-83022-gateway.fat001.qa.pab.com.cn/wmuc/loginServer/loginValidateToken` | `http://pawm-pfp-83022-auth-gateway.pab.com.cn/wmuc/loginServer/loginValidateToken` | 门户 tokenId 校验接口，GET 请求 URL 带 `?tokenId=xxx` |
 | `SSO_LOGIN_REDIRECT_URL` | `https://<map dev 域名>/` | `https://<map fat 域名>/` | `https://<map prd 域名>/` | 登录成功后浏览器最终落地 URL |
 
 其余跨环境通用字段：
@@ -303,17 +279,17 @@ SECRET_KEY=<openssl rand -hex 32>
 
 > ⚠️ **`APP_ENV=production` 后**：未携带有效 JWT 的请求一律 401；务必在 SSO 全链路联调通过后再切换。
 
-### 4.4 字段映射改造点（最常见踩坑）
+### 4.4 门户字段映射（已确认）
 
-`_parse_portal_response` 当前按多个别名容错取值：
-```python
-user_id      = raw.get("userId") or raw.get("user_id") or raw.get("uid") or raw.get("id")
-username     = raw.get("userName") or raw.get("username") or raw.get("loginName")
-display_name = raw.get("displayName") or raw.get("display_name") or raw.get("name")
-email        = raw.get("email")
-department   = raw.get("department") or raw.get("deptName")
-```
-拿到门户接口真实样例后，**把上面优先级里属于本公司的字段名提到第一位**，避免别名顺序错乱拿到错误字段。
+门户返回 `{"data": {...}}`，`_parse_portal_response` 已按以下优先级解析：
+
+| 本地字段 | 门户字段优先级 |
+|---------|---------------|
+| `user_id` | `userId` → `user_id` → `uid` → `id` |
+| `username` | `userName` → `username` → `loginName` |
+| `display_name` | `realName` → `displayName` → `display_name` → `name` |
+| `email` | `mailAddr` → `email` |
+| `department` | `department` → `deptName` |
 
 ### 4.5 联调验证步骤
 
@@ -325,12 +301,12 @@ department   = raw.get("department") or raw.get("deptName")
 
 2. 全链路测试：浏览器访问 `https://map.intranet.company.com/`，被门户拦截 → 登录 → 自动跳回 → 应有 `Set-Cookie: mapToken=...`，前端首页可正常加载。
 
-3. 失败排查（按现象）：
-   - 访问根 URL 没跳门户而是看到欢迎页 → 前端未实现"无 Cookie 时跳转 `${SSO_LOGIN_URL}?urI=...`"逻辑，或门户登录页 URL 没配
-   - 回调返回 `?error=invalid_token` → 门户校验返回的 JSON 里 `userId` 字段名不在别名列表中
-   - 5xx + `门户 token 校验超时` → 防火墙/路由不通，或门户接口慢
-   - 回调成功但前端仍 401 → Cookie 域名不匹配（平台 Ingress 与后端 Host 头不一致）或前端没带 `credentials: 'include'`
-   - `用户已被禁用` → `map_users.status=0`，DBA 数据问题
+3. 失败排查：
+   - 没跳门户 → 前端未实现跳转逻辑或 `SSO_LOGIN_URL` 未配
+   - `?error=invalid_token` → `userId` 字段名不在解析别名中
+   - 5xx + `超时` → 防火墙不通或门户接口慢
+   - 回调成功但前端仍 401 → Cookie 域名不匹配或前端未带 `credentials: 'include'`
+   - `用户已被禁用` → `map_users.status=0`
 
 
 ---
@@ -357,11 +333,11 @@ department   = raw.get("department") or raw.get("deptName")
 | 字段 | 类型 | 生产取值 | 必填 | 说明 |
 |---|---|---|---|---|
 | `MAP_USE_SQLITE` | bool | `false` | ✅ | 生产必须 `false` |
-| `DB_HOST` | string | `tdsql-map-prod.intranet.company.com` | ✅ | DBA 提供 |
-| `DB_PORT` | int | `5400` | ✅ | TDSQL 默认 5400 |
-| `DB_USER` | string | `map_app` | ✅ | 业务账号 |
-| `DB_PASSWORD` | string | `<DBA 颁发>` | ✅ | 建议改为环境变量注入（见 3.3） |
-| `DB_NAME` | string | `mapdb` | ✅ | |
+| `DB_HOST` | string | `t0pawmmapdata-my.db.qa.pab.com.cn` | ✅ | DBA 提供 |
+| `DB_PORT` | int | `3306` | ✅ | 标准 MySQL 端口 |
+| `DB_USER` | string | `deployop` | ✅ | 最高权限账号（首期跑通） |
+| `DB_PASSWORD` | string | `j3eKJSbX29e3` | ✅ | 首期明文配置，生产建议走密钥管理 |
+| `DB_NAME` | string | `pawmmapdata` | ✅ | DBA 已建库 |
 | `DB_CHARSET` | string | `utf8mb4` | ✅ | 不可改 |
 | `DB_POOL_SIZE` | int | `10` | ⛔ | 见 3.1 |
 | `DB_MAX_OVERFLOW` | int | `20` | ⛔ | |
@@ -381,7 +357,7 @@ department   = raw.get("department") or raw.get("deptName")
 | 字段 | 类型 | 生产取值 | 必填 | 说明 |
 |---|---|---|---|---|
 | `SSO_LOGIN_URL` | string | `http://wm.paic.com.cn/lckj/pawm-uc/account_login.html` | ✅ | 门户登录页（浏览器跳转），dev/fat 走 `wm.dev.paic` / `wm.stg.paic` |
-| `SSO_VALIDATE_URL` | string | `http://sso.intranet.company.com/wmuc/loginServer/loginValidateToken` | ✅ | 门户 token 校验接口（后端调用） |
+| `SSO_VALIDATE_URL` | string | `http://pawm-pfp-83022-auth-gateway.pab.com.cn/wmuc/loginServer/loginValidateToken` | ✅ | GET 请求，URL 带 `?tokenId=xxx`，返回 `{"data":{"userId","userName","realName","mailAddr"}}`；dev/fat 地址见 4.3 |
 | `SSO_LOGIN_REDIRECT_URL` | string | `https://map.intranet.company.com/` | ✅ | 登录成功后浏览器最终落地 URL |
 | `PORTFOLIO_SYS_URL` | string | `http://portfolio-sys.intranet.company.com` | ⚠️ | 留空将使用 Mock 适配器，门户首页头寸为假数据 |
 | `RISK_SYS_URL` | string | `http://risk-sys.intranet.company.com` | ⚠️ | 留空使用 Mock |
@@ -477,7 +453,7 @@ Body 结构（`webhooks.py::RawSignal`）：
 
 | 方向 | 源 | 目标 | 端口/协议 | 用途 |
 |---|---|---|---|---|
-| 出向 | MAP 应用容器（平台出口） | TDSQL VIP | TCP/5400 | 数据库连接 |
+| 出向 | MAP 应用容器（平台出口） | TDSQL VIP | TCP/3306 | 数据库连接 |
 | 出向 | MAP 应用容器（平台出口） | Redis VIP | TCP/6379 | 缓存/SSE 总线 |
 | 出向 | MAP 应用容器（平台出口） | RocketMQ NameServer | TCP/9876 | MQ NameSrv（首期 stub 模式可不申请） |
 | 出向 | MAP 应用容器（平台出口） | RocketMQ Broker | TCP/10911, 10912, 10909 | MQ Broker（首期 stub 模式可不申请） |
@@ -501,36 +477,34 @@ Body 结构（`webhooks.py::RawSignal`）：
 
 ### 8.2 配置
 
-- [ ] `/etc/map/config.json` 已就位，权限 0600，owner = mapapp
+- [ ] `config.json` 已就绪（占位模板，敏感字段留空）
 - [ ] `APP_ENV=production`、`DEBUG=false`
-- [ ] `SECRET_KEY` 已换成 `openssl rand -hex 32` 生成的强随机值
+- [ ] `SECRET_KEY` 已通过平台密钥管理注入 `openssl rand -hex 32` 强随机值
 - [ ] `CORS_ORIGINS` 已改为前端实际域名（非 `*`）
-- [ ] `SSO_LOGIN_URL` / `SSO_VALIDATE_URL` / `SSO_LOGIN_REDIRECT_URL` 已对齐门户提供的真实地址（按 dev/fat/prd 三档分别录入）
-- [ ] 数据库 6 项 (`DB_*`) 已填生产值，密码不在 `config.json` 明文（推荐 3.3 改造）
-- [ ] `PORTFOLIO_SYS_URL` / `RISK_SYS_URL`：① 已对接的填真实地址；② 暂未对接的明确留空（团队周知会走 Mock）
+- [ ] `SSO_LOGIN_URL` / `SSO_VALIDATE_URL` / `SSO_LOGIN_REDIRECT_URL` 已按环境录入
+- [ ] 数据库 6 项 (`DB_*`) 已填生产值，密码走平台密钥管理
+- [ ] `PORTFOLIO_SYS_URL` / `RISK_SYS_URL`：已对接的填地址，暂未对接的留空（走 Mock）
 
 ### 8.3 基础设施联通
 
-- [ ] `nc -zv` 验证 5 类外部资源（DB / Redis / MQ / SSO / 组合/风控系统）端口可达
-- [ ] DBA 已建库 `mapdb` + 业务账号；建表脚本已成功执行；`SHOW TABLES` 返回 8 张表
-- [ ] RocketMQ 控制台已创建 `MAP_EVENTS_PROD` Topic 及消费者组
-- [ ] 门户白名单已登记**我方根 URL** `https://map.intranet.company.com/`（不是 `/auth/sso-callback`，回调改挂根路径）
+- [ ] `nc -zv` 验证 DB / Redis / SSO 校验接口 端口可达
+- [ ] `run.sh` 首次启动自动建库 + 建表；`SHOW TABLES` 返回 8 张表
+- [ ] 门户白名单已登记**我方根 URL** `https://<map 对外域名>/`
 
 ### 8.4 服务自检
 
-- [ ] 平台部署页面状态 = "运行中"，副本数全部就绪、近期无重启
-- [ ] 平台日志页面最近 200 行无 ERROR；可见 `RocketMQ consumer worker started (sdk=False)`（首期 stub 模式正常）或 `sdk=True`（已启用 SDK）
-- [ ] 容器 Web Terminal 内 `curl http://127.0.0.1:8000/health` 返回 `{"status":"ok","version":"...","env":"production"}`
-- [ ] 平台对外域名 `https://<域名>/health` 返回同上（验证 Ingress 链路通）
-- [ ] 浏览器全链路：访问首页 → 跳门户 → 登录 → 跳回 → Cookie 已下发 → 前端首屏数据正常
-- [ ] `/api/v1/workspace/portal-snapshot` 返回的 `positions` 非 null（说明组合系统已对接）
-- [ ] 故意造一次未带 Cookie 的 `/api/v1/auth/me` 请求 → 必须 401（验证鉴权未走回退）
+- [ ] 平台状态 = "运行中"，副本数全部就绪、近期无重启
+- [ ] 日志无 ERROR；可见 `RocketMQ consumer worker started (sdk=False)`
+- [ ] `curl http://127.0.0.1:8000/health` → `{"status":"ok","env":"production"}`
+- [ ] 对外域名 `https://<域名>/health` → 同上（验证 Ingress 链路）
+- [ ] 浏览器全链路：访问 → 跳门户 → 登录 → 跳回 → Cookie 已下发 → 首屏正常
+- [ ] 未带 Cookie 调 `/api/v1/auth/me` → 必须 401
 
 ### 8.5 运维基础
 
 - [ ] 日志接公司日志平台（建议 `--log-config /etc/map/logging.json` 输出 JSON）
 - [ ] 平台健康检查已指向 `GET /health`，并验证过实例异常时平台会自动重建
-- [ ] 定时备份 `mapdb`（DBA 侧）
+- [ ] 定时备份 `pawmmapdata`（DBA 侧）
 - [ ] `/api/v1/messages/webhooks/signal` 已加 IP 白名单或签名校验
 
 ---
@@ -578,11 +552,11 @@ Body 结构（`webhooks.py::RawSignal`）：
   "CORS_ORIGINS": "https://map.intranet.company.com",
 
   "MAP_USE_SQLITE": false,
-  "DB_HOST": "tdsql-map-prod.intranet.company.com",
-  "DB_PORT": 5400,
-  "DB_USER": "map_app",
-  "DB_PASSWORD": "REPLACE_OR_USE_ENV",
-  "DB_NAME": "mapdb",
+  "DB_HOST": "t0pawmmapdata-my.db.qa.pab.com.cn",
+  "DB_PORT": 3306,
+  "DB_USER": "deployop",
+  "DB_PASSWORD": "j3eKJSbX29e3",
+  "DB_NAME": "pawmmapdata",
   "DB_CHARSET": "utf8mb4",
   "DB_POOL_SIZE": 10,
   "DB_MAX_OVERFLOW": 20,
@@ -600,7 +574,7 @@ Body 结构（`webhooks.py::RawSignal`）：
   "ROCKETMQ_TOPIC": "MAP_EVENTS_PROD",
 
   "SSO_LOGIN_URL": "http://wm.paic.com.cn/lckj/pawm-uc/account_login.html",
-  "SSO_VALIDATE_URL": "http://sso.intranet.company.com/wmuc/loginServer/loginValidateToken",
+  "SSO_VALIDATE_URL": "http://pawm-pfp-83022-auth-gateway.pab.com.cn/wmuc/loginServer/loginValidateToken",
   "SSO_LOGIN_REDIRECT_URL": "https://map.intranet.company.com/",
 
   "PORTFOLIO_SYS_URL": "http://portfolio-sys.intranet.company.com",
